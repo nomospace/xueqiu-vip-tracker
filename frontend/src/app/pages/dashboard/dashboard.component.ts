@@ -512,16 +512,22 @@ export class DashboardComponent implements OnInit {
     this.loading = true;
     this.holdings = [];
     
-    // TODO: 实现真实的持仓变更API
-    setTimeout(() => {
-      this.holdings = [
-        { stock_code: '600519', stock_name: '贵州茅台', operation: '加仓', vip_nickname: '方三文', vip_id: 2, created_at: new Date().toISOString(), weight: 8.5 },
-        { stock_code: '000858', stock_name: '五粮液', operation: '新增', vip_nickname: '省心省力啊', vip_id: 4, created_at: new Date(Date.now() - 3600000).toISOString(), weight: 5.2 },
-        { stock_code: '300750', stock_name: '宁德时代', operation: '清仓', vip_nickname: '省心省力啊', vip_id: 3, created_at: new Date(Date.now() - 7200000).toISOString() },
-      ];
-      this.loading = false;
-      this.updateLastTime();
-    }, 500);
+    const cookie = localStorage.getItem('xueqiu_cookie') || '';
+    
+    this.http.post<HoldingChange[]>('/api/vip/fetch-holdings', {
+      cookie: cookie
+    }).subscribe({
+      next: (holdings) => {
+        this.holdings = holdings;
+        this.loading = false;
+        this.updateLastTime();
+      },
+      error: () => {
+        this.loading = false;
+        // 如果API失败，显示空数据
+        this.holdings = [];
+      }
+    });
   }
 
   filterByTime(statuses: Status[]): Status[] {

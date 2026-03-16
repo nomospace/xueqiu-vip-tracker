@@ -479,3 +479,92 @@ async def get_vip_rebalancing(
         }
         for r in rebalancings
     ]
+
+
+class FetchHoldingsRequest(BaseModel):
+    cookie: str = ""
+
+
+@router.post("/fetch-holdings")
+async def fetch_all_holdings(
+    data: FetchHoldingsRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """获取所有大V的持仓变更"""
+    import os
+    
+    # 获取所有关注的大V
+    result = await db.execute(select(VIPUser))
+    vips = result.scalars().all()
+    
+    if not vips:
+        return []
+    
+    # 使用前端传递的Cookie
+    cookie_file = os.path.expanduser("~/.xueqiu_cookie_temp")
+    original_cookie_file = os.path.expanduser("~/.xueqiu_cookie")
+    
+    all_holdings = []
+    
+    try:
+        if data.cookie:
+            with open(cookie_file, "w") as f:
+                f.write(data.cookie)
+            if os.path.exists(original_cookie_file):
+                os.rename(original_cookie_file, original_cookie_file + ".bak")
+            os.rename(cookie_file, original_cookie_file)
+        
+        from app.services.xueqiu_service import XueqiuService
+        service = XueqiuService()
+        
+        for vip in vips:
+            try:
+                # 获取用户组合
+                portfolios = service.get_user_portfolios(vip.xueqiu_id)
+                
+                for p in portfolios[:2]:  # 每个大V只取前2个组合
+                    # 获取调仓历史
+                    rebalancings = service.get_portfolio_rebalancing(p.symbol, 5)
+                    
+                    for r in rebalancings:
+                        # 解析调仓记录中的持仓变更
+                        if r.description:
+                            # description 包含调仓详情，解析股票操作
+                            import re
+                            # 匹配格式如：买入 $贵州茅台(SH600519)$ 
+                            # 或：卖出 $宁德时代(SZ300750)$
+                            
+                            # 简单解析：查找股票代码和操作
+                            stocks = re.findall(r'\$([^$]+)\(([A-Z0-9]+)\)\$', r.description)
+                            
+                            for stock_name, stock_code in stocks:
+                                # 判断操作类型
+                                operation = '加仓'
+                                if '卖出' in r.description or '清仓' in r.description:
+                                    operation = '减仓' if '卖出' in r.description else '清仓'
+                                elif '买入' in r.description or '新建' in r.description:
+                                    operation = '新增' if '新建' in r.description else '加仓'
+                                
+                                all_holdings.append({
+                                    "stock_code": stock_code,
+                                    "stock_name": stock_name,
+                                    "operation": operation,
+                                    "vip_nickname": vip.nickname,
+                                    "vip_id": vip.id,
+                                    "created_at": r.pub_date,
+                                    "portfolio_name": p.name,
+                                })
+            except Exception as e:
+                print(f"获取 {vip.nickname} 持仓失败: {e}")
+                continue
+        
+        # 按时间排序
+        all_holdings.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        
+        return all_holdings[:50]  # 返回最近50条
+        
+    finally:
+        if os.path.exists(original_cookie_file + ".bak"):
+            if os.path.exists(original_cookie_file):
+                os.remove(original_cookie_file)
+            os.rename(original_cookie_file + ".bak", original_cookie_file)
