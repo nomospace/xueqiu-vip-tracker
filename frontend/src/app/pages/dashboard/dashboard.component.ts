@@ -52,6 +52,18 @@ interface HoldingChange {
   weight?: number;
 }
 
+interface Analysis {
+  coreViewpoint?: string;
+  relatedStocks?: { name: string; code: string; attitude: string; reason: string }[];
+  positionSignals?: { operation: string; stock: string; basis: string }[];
+  keyLogic?: string[];
+  riskWarnings?: string[];
+  overallAttitude?: string;
+  summary?: string;
+  rawAnalysis?: string;
+  error?: string;
+}
+
 @Component({
   selector: 'app-dashboard',
   standalone: true,
@@ -238,7 +250,80 @@ interface HoldingChange {
                       <!-- 富文本内容渲染 -->
                       <div class="text-gray-700 text-sm leading-relaxed rich-text" [innerHTML]="item.text | richText"></div>
                       
-                      <div class="mt-3 flex justify-end">
+                      <!-- 脱水解读 -->
+                      @if (getAnalysis(item.id)) {
+                        <div class="mt-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-100">
+                          <div class="flex items-center gap-2 mb-3">
+                            <span class="text-lg">🧠</span>
+                            <span class="font-medium text-gray-800">脱水解读</span>
+                            @if (getAnalysis(item.id)?.overallAttitude) {
+                              <span class="ml-auto text-xs px-2 py-1 rounded-full"
+                                [class]="getAnalysis(item.id)?.overallAttitude?.includes('看多') ? 'bg-green-100 text-green-700' : 
+                                        getAnalysis(item.id)?.overallAttitude?.includes('看空') ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'">
+                                {{ getAnalysis(item.id)?.overallAttitude }}
+                              </span>
+                            }
+                          </div>
+                          
+                          @if (getAnalysis(item.id)?.error) {
+                            <div class="text-red-500 text-sm">{{ getAnalysis(item.id)?.error }}</div>
+                          } @else {
+                            @if (getAnalysis(item.id)?.coreViewpoint) {
+                              <div class="mb-3">
+                                <div class="text-xs text-gray-500 mb-1">核心观点</div>
+                                <div class="text-gray-800 font-medium">{{ getAnalysis(item.id)?.coreViewpoint }}</div>
+                              </div>
+                            }
+                            
+                            @if (getAnalysis(item.id)?.relatedStocks?.length) {
+                              <div class="mb-3">
+                                <div class="text-xs text-gray-500 mb-1">相关股票</div>
+                                <div class="flex flex-wrap gap-2">
+                                  @for (stock of getAnalysis(item.id)?.relatedStocks; track stock.code) {
+                                    <span class="text-xs px-2 py-1 rounded bg-white border"
+                                      [class]="stock.attitude?.includes('看多') ? 'border-green-300 text-green-700' : 
+                                              stock.attitude?.includes('看空') ? 'border-red-300 text-red-700' : 'border-gray-300 text-gray-600'">
+                                      {{ stock.name }} <span class="opacity-60">{{ stock.attitude }}</span>
+                                    </span>
+                                  }
+                                </div>
+                              </div>
+                            }
+                            
+                            @if (getAnalysis(item.id)?.positionSignals?.length) {
+                              <div class="mb-3">
+                                <div class="text-xs text-gray-500 mb-1">持仓信号</div>
+                                <div class="space-y-1">
+                                  @for (signal of getAnalysis(item.id)?.positionSignals; track signal.stock) {
+                                    <div class="text-sm flex items-center gap-2">
+                                      <span class="px-1.5 py-0.5 rounded text-xs"
+                                        [class]="signal.operation === '新增' || signal.operation === '加仓' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">
+                                        {{ signal.operation }}
+                                      </span>
+                                      <span>{{ signal.stock }}</span>
+                                    </div>
+                                  }
+                                </div>
+                              </div>
+                            }
+                            
+                            @if (getAnalysis(item.id)?.summary) {
+                              <div class="mt-3 pt-3 border-t border-blue-100">
+                                <div class="text-xs text-gray-500 mb-1">脱水总结</div>
+                                <div class="text-gray-700 text-sm">{{ getAnalysis(item.id)?.summary }}</div>
+                              </div>
+                            }
+                          }
+                        </div>
+                      }
+                      
+                      <div class="mt-3 flex items-center justify-between">
+                        <button 
+                          (click)="analyzeStatus(item)"
+                          [disabled]="analyzingId === item.id"
+                          class="text-xs text-purple-500 hover:text-purple-600 disabled:opacity-50">
+                          {{ analyzingId === item.id ? '🧠 分析中...' : getAnalysis(item.id) ? '🔄 重新解读' : '🧠 脱水解读' }}
+                        </button>
                         <a [href]="item.link" target="_blank" class="text-xs text-blue-500 hover:underline">
                           查看原文 →
                         </a>
@@ -340,6 +425,10 @@ export class DashboardComponent implements OnInit {
   holdings: HoldingChange[] = [];
   loading = false;
   lastUpdate = '--';
+  
+  // AI分析
+  analyzingId: string | null = null;
+  analyses: Map<string, Analysis> = new Map();
   
   // Cookie
   cookieStatus = false;
@@ -575,5 +664,30 @@ export class DashboardComponent implements OnInit {
       hour: '2-digit', 
       minute: '2-digit' 
     });
+  }
+
+  // AI分析发言内容
+  analyzeStatus(status: Status) {
+    if (this.analyzingId === status.id) return;
+    
+    this.analyzingId = status.id;
+    
+    this.http.post<Analysis>('/api/vip/analyze', {
+      text: status.text,
+      title: status.title
+    }).subscribe({
+      next: (result) => {
+        this.analyses.set(status.id, result);
+        this.analyzingId = null;
+      },
+      error: () => {
+        this.analyses.set(status.id, { error: '分析失败' });
+        this.analyzingId = null;
+      }
+    });
+  }
+
+  getAnalysis(statusId: string): Analysis | undefined {
+    return this.analyses.get(statusId);
   }
 }

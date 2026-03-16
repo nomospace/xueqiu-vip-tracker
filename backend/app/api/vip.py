@@ -485,6 +485,93 @@ class FetchHoldingsRequest(BaseModel):
     cookie: str = ""
 
 
+class AnalyzeRequest(BaseModel):
+    text: str
+    title: str = ""
+
+
+@router.post("/analyze")
+async def analyze_content(data: AnalyzeRequest):
+    """AI分析大V发言内容"""
+    import httpx
+    
+    if not data.text:
+        return {"error": "内容为空"}
+    
+    # 构建分析提示词
+    prompt = f"""请分析以下雪球大V发言内容，提取关键信息：
+
+标题：{data.title or '无'}
+内容：{data.text[:2000]}
+
+请按以下格式输出（JSON格式，使用英文字段名）：
+
+{{
+  "coreViewpoint": "一句话概括核心观点",
+  "relatedStocks": [
+    {{"name": "股票名称", "code": "股票代码", "attitude": "看多/看空/中性/观望", "reason": "简要理由"}}
+  ],
+  "positionSignals": [
+    {{"operation": "新增/加仓/减仓/清仓", "stock": "股票名称", "basis": "原文依据"}}
+  ],
+  "keyLogic": ["逻辑点1", "逻辑点2"],
+  "riskWarnings": ["风险点1"],
+  "overallAttitude": "整体看多/看空/中性/观望",
+  "summary": "100字以内的精炼总结"
+}}
+
+注意：
+1. 只基于原文内容分析，不要虚构信息
+2. 识别雪球常用术语如"宁王"=宁德时代、"茅指数"=贵州茅台等
+3. 如果原文没有明确提及股票，relatedStocks数组为空
+4. 态度要客观，不要过度解读"""
+
+    try:
+        # 调用本地AI模型（通过OpenAI兼容接口）
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                "https://api.dashscope.cn/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {os.environ.get('DASHSCOPE_API_KEY', '')}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "qwen-turbo",
+                    "messages": [
+                        {"role": "system", "content": "你是一位专业的金融分析师，擅长解读雪球大V发言。请严格基于原文内容进行分析，不要虚构信息。"},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 1000
+                }
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+                
+                # 尝试解析JSON
+                import json
+                import re
+                
+                # 提取JSON部分
+                json_match = re.search(r'\{[\s\S]*\}', content)
+                if json_match:
+                    try:
+                        analysis = json.loads(json_match.group())
+                        return analysis
+                    except:
+                        pass
+                
+                # 如果无法解析JSON，返回原始内容
+                return {"raw_analysis": content}
+            else:
+                return {"error": f"AI分析失败: {response.status_code}"}
+                
+    except Exception as e:
+        return {"error": f"分析出错: {str(e)}"}
+
+
 @router.post("/fetch-holdings")
 async def fetch_all_holdings(
     data: FetchHoldingsRequest,
