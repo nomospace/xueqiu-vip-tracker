@@ -65,6 +65,11 @@ build_frontend() {
 setup_nginx() {
     echo -e "${YELLOW}[3/4] 配置 Nginx...${NC}"
     
+    # 修复目录权限（让 nginx 用户可以访问）
+    chmod 755 /home/${USER} 2>/dev/null || true
+    chmod 755 ${PROJECT_DIR} 2>/dev/null || true
+    chmod -R 755 ${PROJECT_DIR}/frontend/dist 2>/dev/null || true
+    
     # 创建 Nginx 配置
     sudo tee /etc/nginx/conf.d/${PROJECT_NAME}.conf > /dev/null << EOF
 server {
