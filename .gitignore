@@ -57,3 +57,9 @@ logs/
 
 # Docker
 docker-compose.override.yml
+
+# 敏感文件 - 不要提交
+.xueqiu_cookie
+*.cookie
+credentials.json
+.secrets/
