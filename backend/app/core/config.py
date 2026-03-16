@@ -2,7 +2,7 @@
 应用配置
 """
 
-from pydantic import BaseSettings
+from pydantic_settings import BaseSettings
 from typing import List
 
 
