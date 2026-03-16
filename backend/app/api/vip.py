@@ -494,9 +494,24 @@ class AnalyzeRequest(BaseModel):
 async def analyze_content(data: AnalyzeRequest):
     """AI分析大V发言内容"""
     import httpx
+    import os
     
     if not data.text:
         return {"error": "内容为空"}
+    
+    # 检查 API Key
+    api_key = os.environ.get("DASHSCOPE_API_KEY", "")
+    if not api_key:
+        # 返回默认分析结果（无 AI）
+        return {
+            "coreViewpoint": "请配置 DASHSCOPE_API_KEY 环境变量以启用 AI 分析",
+            "relatedStocks": [],
+            "positionSignals": [],
+            "keyLogic": [],
+            "riskWarnings": [],
+            "overallAttitude": "中性",
+            "summary": "AI 分析功能需要配置通义千问 API Key。请设置环境变量 DASHSCOPE_API_KEY。"
+        }
     
     # 构建分析提示词
     prompt = f"""请分析以下雪球大V发言内容，提取关键信息：
@@ -527,28 +542,41 @@ async def analyze_content(data: AnalyzeRequest):
 4. 态度要客观，不要过度解读"""
 
     try:
-        # 调用本地AI模型（通过OpenAI兼容接口）
+        # 调用通义千问 API
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
-                "https://api.dashscope.cn/v1/chat/completions",
+                "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
                 headers={
-                    "Authorization": f"Bearer {os.environ.get('DASHSCOPE_API_KEY', '')}",
+                    "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json"
                 },
                 json={
                     "model": "qwen-turbo",
-                    "messages": [
-                        {"role": "system", "content": "你是一位专业的金融分析师，擅长解读雪球大V发言。请严格基于原文内容进行分析，不要虚构信息。"},
-                        {"role": "user", "content": prompt}
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 1000
+                    "input": {
+                        "messages": [
+                            {"role": "system", "content": "你是一位专业的金融分析师，擅长解读雪球大V发言。请严格基于原文内容进行分析，不要虚构信息。输出必须是纯JSON格式，不要包含markdown代码块标记。"},
+                            {"role": "user", "content": prompt}
+                        ]
+                    },
+                    "parameters": {
+                        "temperature": 0.3,
+                        "max_tokens": 1000
+                    }
                 }
             )
             
             if response.status_code == 200:
                 result = response.json()
-                content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+                
+                # 解析通义千问的响应格式
+                output = result.get("output", {})
+                content = output.get("text", "")
+                
+                # 如果没有 text，尝试其他字段
+                if not content:
+                    choices = result.get("choices", [])
+                    if choices:
+                        content = choices[0].get("message", {}).get("content", "")
                 
                 # 尝试解析JSON
                 import json
@@ -564,10 +592,21 @@ async def analyze_content(data: AnalyzeRequest):
                         pass
                 
                 # 如果无法解析JSON，返回原始内容
-                return {"raw_analysis": content}
+                return {
+                    "coreViewpoint": content[:200] if content else "分析完成",
+                    "relatedStocks": [],
+                    "positionSignals": [],
+                    "keyLogic": [],
+                    "riskWarnings": [],
+                    "overallAttitude": "中性",
+                    "summary": content[:100] if content else "AI 分析完成"
+                }
             else:
-                return {"error": f"AI分析失败: {response.status_code}"}
+                error_detail = response.text[:200] if response.text else "未知错误"
+                return {"error": f"AI分析失败 ({response.status_code}): {error_detail}"}
                 
+    except httpx.TimeoutException:
+        return {"error": "AI 分析超时，请稍后重试"}
     except Exception as e:
         return {"error": f"分析出错: {str(e)}"}
 
