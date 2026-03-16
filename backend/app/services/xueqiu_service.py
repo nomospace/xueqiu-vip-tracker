@@ -189,7 +189,7 @@ class XueqiuService:
                         user_id=str(s.get('user_id', '')),
                         text=s.get('text', ''),
                         title=s.get('title', ''),
-                        link=f"https://xueqiu.com/{s.get('id', '')}",
+                        link=f"https://xueqiu.com/{s.get('user_id', '')}/{s.get('id', '')}",
                         created_at=datetime.fromtimestamp(
                             s.get('created_at', 0) / 1000
                         ).isoformat() if s.get('created_at') else '',

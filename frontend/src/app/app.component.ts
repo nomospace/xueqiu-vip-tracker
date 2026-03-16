@@ -12,10 +12,10 @@ import { RouterLink, RouterOutlet } from '@angular/router';
           📊 脱水雪球
         </a>
         <div class="flex gap-6">
-          <a routerLink="/" class="hover:text-blue-200 transition">仪表盘</a>
-          <a routerLink="/vip" class="hover:text-blue-200 transition">大V列表</a>
-          <a routerLink="/posts" class="hover:text-blue-200 transition">动态</a>
-          <a routerLink="/holdings" class="hover:text-blue-200 transition">持仓</a>
+          <a routerLink="/timeline" class="hover:text-blue-200 transition">📅 时间线</a>
+          <a routerLink="/my-posts" class="hover:text-blue-200 transition">📝 我的</a>
+          <a routerLink="/vip" class="hover:text-blue-200 transition">👥 大V</a>
+          <a routerLink="/holdings" class="hover:text-blue-200 transition">📈 持仓</a>
         </div>
       </div>
     </nav>

@@ -76,6 +76,67 @@ async def check_cookie():
     return {"has_cookie": has_cookie}
 
 
+@router.get("/me")
+async def get_current_user():
+    """获取当前登录用户信息"""
+    from app.services.xueqiu_service import XueqiuService
+    
+    service = XueqiuService()
+    
+    if not service.has_cookie():
+        raise HTTPException(status_code=401, detail="请先配置 Cookie")
+    
+    user_id = service.get_current_user_id()
+    if not user_id:
+        raise HTTPException(status_code=401, detail="无法获取用户信息，请重新配置 Cookie")
+    
+    user_info = service.get_user_info(user_id)
+    
+    return {
+        "user_id": user_info.user_id,
+        "screen_name": user_info.screen_name,
+        "avatar": user_info.avatar,
+        "followers_count": user_info.followers_count,
+        "friends_count": user_info.friends_count,
+        "description": user_info.description,
+    }
+
+
+@router.get("/me/statuses")
+async def get_my_statuses(
+    status_type: int = Query(0, description="动态类型: 0=原发布, 11=交易"),
+    count: int = Query(20, ge=1, le=50),
+):
+    """获取当前用户的动态"""
+    from app.services.xueqiu_service import XueqiuService
+    
+    service = XueqiuService()
+    
+    if not service.has_cookie():
+        raise HTTPException(status_code=401, detail="请先配置 Cookie")
+    
+    user_id = service.get_current_user_id()
+    if not user_id:
+        raise HTTPException(status_code=401, detail="无法获取用户信息")
+    
+    statuses = service.get_user_statuses(user_id, status_type, count)
+    
+    return [
+        {
+            "id": s.id,
+            "user_id": s.user_id,
+            "text": s.text,
+            "title": s.title,
+            "link": s.link,
+            "created_at": s.created_at,
+            "retweet_count": s.retweet_count,
+            "reply_count": s.reply_count,
+            "like_count": s.like_count,
+        }
+        for s in statuses
+    ]
+
+
 @router.post("/cookie")
 async def save_cookie(data: CookieInput):
     """保存 Cookie"""

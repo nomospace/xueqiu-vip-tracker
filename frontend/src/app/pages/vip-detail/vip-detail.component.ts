@@ -87,7 +87,7 @@ import { VipService, VIPUser, Status, Portfolio, Rebalancing } from '../../servi
                           <span>👍 {{ status.like_count }}</span>
                         }
                         @if (status.link) {
-                          <a [href]="'https://xueqiu.com' + status.link" target="_blank" class="text-blue-500 hover:underline">查看原文</a>
+                          <a [href]="status.link" target="_blank" class="text-blue-500 hover:underline">查看原文</a>
                         }
                       </div>
                     </div>
