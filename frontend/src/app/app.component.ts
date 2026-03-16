@@ -9,7 +9,7 @@ import { RouterLink, RouterOutlet } from '@angular/router';
     <nav class="bg-blue-600 text-white p-4 shadow-lg">
       <div class="container mx-auto flex items-center justify-between">
         <a routerLink="/" class="text-xl font-bold flex items-center gap-2">
-          📊 雪球大V追踪器
+          📊 脱水雪球
         </a>
         <div class="flex gap-6">
           <a routerLink="/" class="hover:text-blue-200 transition">仪表盘</a>

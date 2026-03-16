@@ -37,26 +37,14 @@ app.include_router(ws.router, prefix="/ws", tags=["WebSocket"])
 async def startup_event():
     """启动时执行"""
     from app.core.database import init_db
-    from app.tasks.crawler_tasks import start_scheduler
-    
     # 初始化数据库
     await init_db()
-    
-    # 启动定时任务
-    await start_scheduler()
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """关闭时执行"""
-    from app.tasks.crawler_tasks import stop_scheduler
-    await stop_scheduler()
 
 
 @app.get("/")
 async def root():
     return {
-        "name": "mini脱水雪球 API",
+        "name": "脱水雪球 API",
         "version": "1.0.0",
         "docs": "/api/docs"
     }

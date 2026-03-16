@@ -70,6 +70,20 @@ async def check_cookie():
     return {"has_cookie": has_cookie}
 
 
+class CookieInput(BaseModel):
+    cookie: str
+
+
+@router.post("/cookie")
+async def save_cookie(data: CookieInput):
+    """保存 Cookie"""
+    cookie_file = os.path.expanduser("~/.xueqiu_cookie")
+    with open(cookie_file, "w") as f:
+        f.write(data.cookie)
+    os.chmod(cookie_file, 0o600)
+    return {"message": "Cookie 保存成功"}
+
+
 # ============ 大V管理 ============
 
 
