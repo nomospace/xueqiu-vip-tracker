@@ -193,10 +193,13 @@ export class VipListComponent implements OnInit {
   addPresetVip(vip: typeof PRESET_VIPS[0]) {
     if (this.isAdded(vip.xueqiu_id)) return;
     
+    const cookie = localStorage.getItem('xueqiu_cookie') || '';
+    
     this.http.post<VIPUser>('/api/vip', {
       xueqiu_id: vip.xueqiu_id,
       nickname: vip.nickname,
-      followers: vip.followers
+      followers: vip.followers,
+      cookie: cookie
     }).subscribe({
       next: (newVip) => {
         this.myVips.push(newVip);
@@ -211,10 +214,12 @@ export class VipListComponent implements OnInit {
     if (!this.newVipId.trim()) return;
     
     this.adding = true;
+    const cookie = localStorage.getItem('xueqiu_cookie') || '';
     
     this.http.post<VIPUser>('/api/vip', {
       xueqiu_id: this.newVipId.trim(),
-      nickname: this.newVipName.trim() || null
+      nickname: this.newVipName.trim() || null,
+      cookie: cookie
     }).subscribe({
       next: (vip) => {
         this.myVips.push(vip);

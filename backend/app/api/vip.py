@@ -21,6 +21,7 @@ class VIPCreate(BaseModel):
     xueqiu_id: str
     nickname: Optional[str] = None
     followers: Optional[int] = 0
+    cookie: Optional[str] = None  # 前端传递的Cookie
 
 
 class CookieInput(BaseModel):
@@ -185,7 +186,19 @@ async def add_vip(
     avatar = None
     description = None
     
+    # 使用前端传递的Cookie
+    cookie_file = os.path.expanduser("~/.xueqiu_cookie_temp")
+    original_cookie_file = os.path.expanduser("~/.xueqiu_cookie")
+    
     try:
+        if vip_data.cookie:
+            # 临时使用前端传递的Cookie
+            with open(cookie_file, "w") as f:
+                f.write(vip_data.cookie)
+            if os.path.exists(original_cookie_file):
+                os.rename(original_cookie_file, original_cookie_file + ".bak")
+            os.rename(cookie_file, original_cookie_file)
+        
         from app.services.xueqiu_service import crawl_vip
         crawl_result = crawl_vip(vip_data.xueqiu_id)
         
@@ -199,6 +212,12 @@ async def add_vip(
             description = user_info.get("description")
     except Exception as e:
         print(f"爬取失败: {e}")
+    finally:
+        # 恢复原始Cookie文件
+        if os.path.exists(original_cookie_file + ".bak"):
+            if os.path.exists(original_cookie_file):
+                os.remove(original_cookie_file)
+            os.rename(original_cookie_file + ".bak", original_cookie_file)
     
     # 创建记录
     new_vip = VIPUser(
