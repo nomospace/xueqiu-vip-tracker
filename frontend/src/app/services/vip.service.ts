@@ -62,8 +62,11 @@ export class VipService {
     return this.http.get<VIPUser[]>(`${this.apiUrl}?skip=${skip}&limit=${limit}`);
   }
 
-  addVip(xueqiuId: string): Observable<VIPUser> {
-    return this.http.post<VIPUser>(this.apiUrl, { xueqiu_id: xueqiuId });
+  addVip(xueqiuId: string, nickname?: string, followers?: number): Observable<VIPUser> {
+    const body: any = { xueqiu_id: xueqiuId };
+    if (nickname) body.nickname = nickname;
+    if (followers) body.followers = followers;
+    return this.http.post<VIPUser>(this.apiUrl, body);
   }
 
   getVipDetail(id: number): Observable<VIPUser> {

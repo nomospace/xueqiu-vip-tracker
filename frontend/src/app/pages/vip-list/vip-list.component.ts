@@ -70,7 +70,7 @@ import { VipService, VIPUser } from '../../services/vip.service';
             
             <div class="space-y-4">
               <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">雪球用户ID</label>
+                <label class="block text-sm font-medium text-gray-700 mb-1">雪球用户ID <span class="text-red-500">*</span></label>
                 <input 
                   type="text" 
                   [(ngModel)]="newXueqiuId"
@@ -78,6 +78,26 @@ import { VipService, VIPUser } from '../../services/vip.service';
                   class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                 <p class="text-xs text-gray-500 mt-1">可在雪球用户主页URL中找到ID</p>
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">昵称</label>
+                <input 
+                  type="text" 
+                  [(ngModel)]="newNickname"
+                  placeholder="输入大V昵称（可选）"
+                  class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+              </div>
+              
+              <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">粉丝数</label>
+                <input 
+                  type="number" 
+                  [(ngModel)]="newFollowers"
+                  placeholder="输入粉丝数（可选）"
+                  class="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
               </div>
               
               @if (addError) {
@@ -109,6 +129,8 @@ export class VipListComponent implements OnInit {
   loading = false;
   showAddModal = false;
   newXueqiuId = '';
+  newNickname = '';
+  newFollowers: number | null = null;
   adding = false;
   addError = '';
 
@@ -138,11 +160,17 @@ export class VipListComponent implements OnInit {
     this.adding = true;
     this.addError = '';
     
-    this.vipService.addVip(this.newXueqiuId.trim()).subscribe({
+    this.vipService.addVip(
+      this.newXueqiuId.trim(), 
+      this.newNickname.trim() || undefined,
+      this.newFollowers || undefined
+    ).subscribe({
       next: (vip) => {
         this.vips.unshift(vip);
         this.showAddModal = false;
         this.newXueqiuId = '';
+        this.newNickname = '';
+        this.newFollowers = null;
         this.adding = false;
       },
       error: (err) => {

@@ -1,12 +1,11 @@
 """
-脱水雪球 - 数据爬取服务
+脱水雪球 - 数据服务（手动模式）
 
-直接访问雪球 API（需要 Cookie）
+由于服务器 Python 3.6 不支持 Playwright，改为手动输入模式
+后续可升级 Python 后启用自动爬取
 """
 
 import os
-import json
-import httpx
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from dataclasses import dataclass, field, asdict
@@ -74,7 +73,7 @@ class Rebalancing:
 
 
 class XueqiuService:
-    """雪球数据服务"""
+    """雪球数据服务（手动模式）"""
     
     def __init__(self):
         self.cookie_file = os.path.expanduser("~/.xueqiu_cookie")
@@ -92,84 +91,18 @@ class XueqiuService:
                 self.cookie = ""
         return self.cookie
     
-    def _get_headers(self) -> Dict[str, str]:
-        """获取请求头"""
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-            "Origin": "https://xueqiu.com",
-            "Referer": "https://xueqiu.com/",
-        }
-        if self.cookie:
-            # 确保 Cookie 是有效的字符串
-            try:
-                # 尝试编码为 ASCII，如果有问题就移除特殊字符
-                self.cookie.encode('ascii')
-                headers["Cookie"] = self.cookie
-            except UnicodeEncodeError:
-                # 移除或替换非 ASCII 字符
-                safe_cookie = self.cookie.encode('ascii', errors='ignore').decode('ascii')
-                headers["Cookie"] = safe_cookie
-        return headers
-    
-    def _fetch_json(self, url: str, timeout: int = 15) -> Optional[Dict]:
-        """获取 JSON 数据"""
-        try:
-            with httpx.Client(follow_redirects=True, timeout=timeout) as client:
-                resp = client.get(url, headers=self._get_headers())
-                if resp.status_code == 200:
-                    try:
-                        return resp.json()
-                    except:
-                        if "aliyun_waf" in resp.text:
-                            print("雪球 WAF 拦截，Cookie 可能无效")
-                        return None
-        except Exception as e:
-            print(f"请求失败: {e}")
-        return None
+    def has_cookie(self) -> bool:
+        """检查是否已配置 Cookie"""
+        return bool(self.cookie)
     
     def get_user_info(self, user_id: str) -> Optional[UserInfo]:
-        """获取用户信息"""
-        url = f"{XUEQIU_BASE}/v4/statuses/user_timeline.json?user_id={user_id}&count=1"
-        data = self._fetch_json(url)
-        
-        if not data:
-            return None
-        
-        # 从 users 字段提取
-        users = data.get("users", {})
-        user_data = users.get(str(user_id), {})
-        
-        if user_data:
-            return UserInfo(
-                user_id=str(user_id),
-                screen_name=user_data.get("screen_name", ""),
-                avatar=user_data.get("profile_image_url", ""),
-                followers_count=user_data.get("followers_count", 0),
-                friends_count=user_data.get("friends_count", 0),
-                description=user_data.get("description", ""),
-                verified=user_data.get("verified", False),
-                status_count=user_data.get("status_count", 0),
-            )
-        
-        # 从 statuses 中提取
-        statuses = data.get("statuses", [])
-        if statuses:
-            first = statuses[0]
-            user = first.get("user", {})
-            return UserInfo(
-                user_id=str(user_id),
-                screen_name=user.get("screen_name", ""),
-                avatar=user.get("profile_image_url", ""),
-                followers_count=user.get("followers_count", 0),
-                friends_count=user.get("friends_count", 0),
-                description=user.get("description", ""),
-                verified=user.get("verified", False),
-                status_count=user.get("status_count", 0),
-            )
-        
-        return None
+        """获取用户信息（手动模式）"""
+        # 返回默认用户信息，用户需要手动补充
+        return UserInfo(
+            user_id=str(user_id),
+            screen_name=f"用户{user_id}",
+            crawled_at=datetime.now().isoformat(),
+        )
     
     def get_user_statuses(
         self,
@@ -177,91 +110,24 @@ class XueqiuService:
         status_type: int = 0,
         count: int = 20
     ) -> List[Status]:
-        """获取用户动态"""
-        url = f"{XUEQIU_BASE}/v4/statuses/user_timeline.json?user_id={user_id}&type={status_type}&count={count}"
-        data = self._fetch_json(url)
-        
-        if not data or "statuses" not in data:
-            return []
-        
-        statuses = []
-        for s in data.get("statuses", [])[:count]:
-            try:
-                created_at = ""
-                if s.get("created_at"):
-                    created_at = datetime.fromtimestamp(s["created_at"] / 1000).isoformat()
-                
-                statuses.append(Status(
-                    id=str(s.get("id", "")),
-                    user_id=str(user_id),
-                    text=s.get("text", "")[:500] if s.get("text") else "",  # 截断长文本
-                    title=s.get("title", ""),
-                    link=f"https://xueqiu.com/{s.get('user', {}).get('id', '')}/{s.get('id', '')}",
-                    created_at=created_at,
-                    retweet_count=s.get("retweet_count", 0),
-                    reply_count=s.get("reply_count", 0),
-                    like_count=s.get("like_count", 0),
-                ))
-            except Exception as e:
-                print(f"解析动态失败: {e}")
-                continue
-        
-        return statuses
+        """获取用户动态（手动模式）"""
+        # 返回空列表，暂不支持自动爬取
+        return []
     
     def get_user_portfolios(self, user_id: str) -> List[Portfolio]:
-        """获取用户组合列表"""
-        url = f"{XUEQIU_BASE}/cubes/list.json?user_id={user_id}&count=10"
-        data = self._fetch_json(url)
-        
-        if not data or "list" not in data:
-            return []
-        
-        portfolios = []
-        for p in data.get("list", []):
-            try:
-                portfolios.append(Portfolio(
-                    cube_id=str(p.get("cube_id", "")),
-                    name=p.get("name", ""),
-                    symbol=p.get("symbol", ""),
-                    net_value=float(p.get("net_value", 0)),
-                    total_gain=float(p.get("total_gain", 0)),
-                ))
-            except Exception as e:
-                print(f"解析组合失败: {e}")
-                continue
-        
-        return portfolios
+        """获取用户组合列表（手动模式）"""
+        return []
     
     def get_portfolio_rebalancing(
         self,
         cube_id: str,
         count: int = 10
     ) -> List[Rebalancing]:
-        """获取组合调仓历史"""
-        url = f"{XUEQIU_BASE}/cubes/rebalancing/history.json?cube_id={cube_id}&count={count}"
-        data = self._fetch_json(url)
-        
-        if not data or "list" not in data:
-            return []
-        
-        rebalancings = []
-        for r in data.get("list", []):
-            try:
-                rebalancings.append(Rebalancing(
-                    cube_id=cube_id,
-                    title=r.get("title", ""),
-                    link=f"https://xueqiu.com/cubes/rebalancing/{r.get('id', '')}",
-                    description=r.get("description", "")[:500] if r.get("description") else "",
-                    pub_date=r.get("created_at", ""),
-                ))
-            except Exception as e:
-                print(f"解析调仓失败: {e}")
-                continue
-        
-        return rebalancings
+        """获取组合调仓历史（手动模式）"""
+        return []
     
     def crawl_vip(self, user_id: str) -> Dict[str, Any]:
-        """爬取大V完整信息"""
+        """爬取大V完整信息（手动模式）"""
         result = {
             "user_id": user_id,
             "success": False,
@@ -269,26 +135,15 @@ class XueqiuService:
             "statuses": [],
             "trade_statuses": [],
             "rebalancings": [],
-            "error": None
+            "error": "自动爬取暂不可用，请手动输入信息"
         }
         
-        try:
-            # 获取用户信息
-            user_info = self.get_user_info(user_id)
-            if user_info:
-                result["user_info"] = asdict(user_info)
-                result["success"] = True
-            
-            # 获取原发布动态
-            statuses = self.get_user_statuses(user_id, status_type=0, count=10)
-            result["statuses"] = [asdict(s) for s in statuses]
-            
-            # 获取交易动态
-            trade_statuses = self.get_user_statuses(user_id, status_type=11, count=10)
-            result["trade_statuses"] = [asdict(s) for s in trade_statuses]
-            
-        except Exception as e:
-            result["error"] = str(e)
+        # 返回默认信息，提示用户手动输入
+        result["user_info"] = asdict(UserInfo(
+            user_id=str(user_id),
+            screen_name=f"用户{user_id}",
+            crawled_at=datetime.now().isoformat(),
+        ))
         
         return result
 
@@ -301,8 +156,9 @@ def crawl_vip(user_id: str) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     import sys
+    import json
     user_id = sys.argv[1] if len(sys.argv) > 1 else "1247347543"
     
-    print(f"爬取用户 {user_id}...")
+    print(f"获取用户 {user_id} 信息...")
     result = crawl_vip(user_id)
     print(json.dumps(result, ensure_ascii=False, indent=2))
