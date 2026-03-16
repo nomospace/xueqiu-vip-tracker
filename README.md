@@ -1,64 +1,104 @@
-# mini脱水雪球
+# 雪球大V追踪器 (Xueqiu VIP Tracker)
 
-> 个人投资者实时跟踪雪球大V观点与持仓变动的自动化工具
+> 轻量级雪球大V监控工具，追踪大V动态与持仓变动
 
-## 🏗️ 项目结构
+## ✨ 功能特性
+
+- **大V管理** - 添加、删除、查看关注的雪球大V
+- **动态监控** - 实时查看大V发布的动态
+- **持仓追踪** - 追踪大V持仓变化（开发中）
+- **数据可视化** - 清晰的仪表盘展示
+
+## 🛠️ 技术栈
+
+| 组件 | 技术 |
+|------|------|
+| 前端 | Angular 17 + Tailwind CSS |
+| 后端 | FastAPI + SQLAlchemy |
+| 数据库 | SQLite（开发）/ PostgreSQL（生产） |
+| 任务调度 | APScheduler |
+
+## 📦 一键部署
+
+```bash
+# 克隆项目
+git clone https://github.com/nomospace/xueqiu-vip-tracker.git
+cd xueqiu-vip-tracker
+
+# 一键部署
+./scripts/deploy.sh
+```
+
+部署完成后访问：http://localhost:3007
+
+## 🔧 手动启动
+
+### 后端
+
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+### 前端
+
+```bash
+cd frontend
+npm install
+npx ng serve --host 0.0.0.0 --port 4200
+```
+
+## 📁 项目结构
 
 ```
-snowball-vip-monitor/
-├── frontend/          # Angular 前端
+xueqiu-vip-tracker/
+├── frontend/           # Angular 前端
 │   ├── src/
-│   ├── angular.json
-│   └── package.json
-├── backend/           # FastAPI 后端
+│   └── angular.json
+├── backend/            # FastAPI 后端
 │   ├── app/
-│   ├── requirements.txt
-│   └── main.py
-├── docs/              # 文档
-│   ├── PRD.md
-│   └── API.md
-├── scripts/           # 部署脚本
+│   │   ├── api/       # API 路由
+│   │   ├── models/    # 数据模型
+│   │   ├── services/  # 业务逻辑
+│   │   └── tasks/     # 定时任务
+│   └── requirements.txt
+├── scripts/            # 部署脚本
 │   └── deploy.sh
-├── docker-compose.yml
 └── README.md
 ```
 
-## 🚀 技术栈
+## 🌐 API 文档
 
-| 层级 | 技术 | 说明 |
-|------|------|------|
-| 前端 | Angular 17+ + Tailwind CSS + ECharts | 响应式布局，图表可视化 |
-| 后端 | Python 3.11 + FastAPI | 异步高性能框架 |
-| 数据库 | PostgreSQL 15 + Redis 7 | 结构化数据 + 缓存 |
-| 任务调度 | Celery + Celery Beat | 定时爬虫任务 |
-| 部署 | Docker + Nginx | 容器化部署 |
+启动后端后访问：
+- Swagger UI: http://localhost:8000/api/docs
+- ReDoc: http://localhost:8000/api/redoc
 
-## 📋 功能模块
+## ⚙️ 配置
 
-- **大V管理**：添加/删除/查看大V信息
-- **动态监听**：实时抓取大V发帖、转发、评论
-- **持仓监控**：追踪大V持仓变动，识别加仓/减仓
-- **通知推送**：WebSocket实时推送新动态
-- **数据可视化**：持仓图表、动态统计
+### Cookie 配置
 
-## 🔧 快速开始
+由于雪球 WAF 限制，需要配置 Cookie 才能自动爬取数据：
 
 ```bash
-# 后端
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-
-# 前端
-cd frontend
-npm install
-ng serve
+# 创建 Cookie 文件
+echo "你的雪球Cookie" > ~/.xueqiu_cookie
 ```
 
-## 📖 文档
+Cookie 获取方式：
+1. 登录雪球网页版
+2. 打开开发者工具 → Network → 找任意请求
+3. 复制 Cookie 值
 
-- [PRD 产品需求文档](./docs/PRD.md)
-- [API 接口文档](./docs/API.md)
+## 📊 端口说明
+
+| 服务 | 端口 |
+|------|------|
+| Nginx (对外) | 3007 |
+| 前端开发服务 | 4200 |
+| 后端 API | 8000 |
 
 ## ⚠️ 免责声明
 
