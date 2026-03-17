@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
+import { timeout, catchError, of } from 'rxjs';
 
 // 富文本处理 Pipe
 @Pipe({
@@ -40,6 +41,7 @@ interface Status {
   like_count: number;
   vip_nickname?: string;
   vip_id?: number;
+  data_type?: 'timeline' | 'post' | 'comment'; // 时间线/发言/评论
   analysis?: Analysis;
 }
 
@@ -127,11 +129,16 @@ interface Analysis {
           </div>
 
           <!-- 快速操作 -->
-          <div class="bg-white rounded-lg shadow-sm p-4">
+          <div class="bg-white rounded-lg shadow-sm p-4 space-y-2">
             <a 
               routerLink="/vip" 
               class="block w-full bg-blue-600 text-white text-center py-2 rounded-lg hover:bg-blue-700 transition text-sm">
               + 添加大V
+            </a>
+            <a 
+              routerLink="/summary" 
+              class="block w-full bg-orange-500 text-white text-center py-2 rounded-lg hover:bg-orange-600 transition text-sm">
+              📊 执行摘要
             </a>
           </div>
 
@@ -154,23 +161,26 @@ interface Analysis {
               <button 
                 (click)="switchTab('timeline')"
                 [class]="activeTab === 'timeline' ? 'px-6 py-3 font-medium text-blue-600 border-b-2 border-blue-600' : 'px-6 py-3 text-gray-500 hover:text-gray-700'">
-                📅 时间线
-              </button>
-              <button 
-                (click)="switchTab('posts')"
-                [class]="activeTab === 'posts' ? 'px-6 py-3 font-medium text-blue-600 border-b-2 border-blue-600' : 'px-6 py-3 text-gray-500 hover:text-gray-700'">
-                📝 发言
-              </button>
-              <button 
-                (click)="switchTab('comments')"
-                [class]="activeTab === 'comments' ? 'px-6 py-3 font-medium text-blue-600 border-b-2 border-blue-600' : 'px-6 py-3 text-gray-500 hover:text-gray-700'">
-                💬 评论回复
+                📅 时间线（含脱水解读）
               </button>
               <button 
                 (click)="switchTab('holdings')"
                 [class]="activeTab === 'holdings' ? 'px-6 py-3 font-medium text-blue-600 border-b-2 border-blue-600' : 'px-6 py-3 text-gray-500 hover:text-gray-700'">
                 📈 持仓变更
               </button>
+              @if (activeTab === 'timeline') {
+                <div class="ml-auto flex items-center gap-2 px-4">
+                  @if (cacheTime) {
+                    <span class="text-xs text-gray-400">{{ cacheTime }} 缓存</span>
+                  }
+                  <button 
+                    (click)="refreshTimeline()"
+                    [disabled]="loading"
+                    class="text-sm text-blue-500 hover:text-blue-600 disabled:opacity-50">
+                    {{ loading ? '刷新中...' : '🔄 刷新' }}
+                  </button>
+                </div>
+              }
             </div>
 
             <!-- 内容区域 -->
@@ -247,6 +257,9 @@ interface Analysis {
                           <div class="flex items-center gap-2 mb-3">
                             <span class="text-lg">🧠</span>
                             <span class="font-medium text-gray-800">脱水解读</span>
+                            @if (item.analysis._cached) {
+                              <span class="text-xs text-gray-400 ml-1">📦缓存</span>
+                            }
                             @if (item.analysis.overallAttitude) {
                               <span class="ml-auto text-xs px-2 py-1 rounded-full"
                                 [class]="item.analysis.overallAttitude.includes('看多') ? 'bg-green-100 text-green-700' : 
@@ -261,14 +274,14 @@ interface Analysis {
                           } @else {
                             @if (item.analysis.coreViewpoint) {
                               <div class="mb-3">
-                                <div class="text-xs text-gray-500 mb-1">核心观点</div>
+                                <div class="text-xs text-gray-500 mb-1">💡 核心观点</div>
                                 <div class="text-gray-800 font-medium">{{ item.analysis.coreViewpoint }}</div>
                               </div>
                             }
                             
                             @if (item.analysis.relatedStocks?.length) {
                               <div class="mb-3">
-                                <div class="text-xs text-gray-500 mb-1">相关股票</div>
+                                <div class="text-xs text-gray-500 mb-1">📊 相关股票</div>
                                 <div class="flex flex-wrap gap-2">
                                   @for (stock of item.analysis.relatedStocks; track stock.code) {
                                     <span class="text-xs px-2 py-1 rounded bg-white border"
@@ -283,7 +296,7 @@ interface Analysis {
                             
                             @if (item.analysis.positionSignals?.length) {
                               <div class="mb-3">
-                                <div class="text-xs text-gray-500 mb-1">持仓信号</div>
+                                <div class="text-xs text-gray-500 mb-1">📡 持仓信号</div>
                                 <div class="space-y-1">
                                   @for (signal of item.analysis.positionSignals; track signal.stock) {
                                     <div class="text-sm flex items-center gap-2">
@@ -292,15 +305,40 @@ interface Analysis {
                                         {{ signal.operation }}
                                       </span>
                                       <span>{{ signal.stock }}</span>
+                                      @if (signal.basis) {
+                                        <span class="text-gray-400 text-xs">- {{ signal.basis }}</span>
+                                      }
                                     </div>
                                   }
                                 </div>
                               </div>
                             }
                             
+                            @if (item.analysis.keyLogic?.length) {
+                              <div class="mb-3">
+                                <div class="text-xs text-gray-500 mb-1">🔗 逻辑链条</div>
+                                <ul class="list-disc list-inside text-sm text-gray-600 space-y-1">
+                                  @for (logic of item.analysis.keyLogic; track $index) {
+                                    <li>{{ logic }}</li>
+                                  }
+                                </ul>
+                              </div>
+                            }
+                            
+                            @if (item.analysis.riskWarnings?.length) {
+                              <div class="mb-3 bg-red-50 p-2 rounded">
+                                <div class="text-xs font-medium text-red-700 mb-1">⚠️ 风险提示</div>
+                                <ul class="list-disc list-inside text-xs text-red-600 space-y-1">
+                                  @for (risk of item.analysis.riskWarnings; track $index) {
+                                    <li>{{ risk }}</li>
+                                  }
+                                </ul>
+                              </div>
+                            }
+                            
                             @if (item.analysis.summary) {
                               <div class="mt-3 pt-3 border-t border-blue-100">
-                                <div class="text-xs text-gray-500 mb-1">脱水总结</div>
+                                <div class="text-xs text-gray-500 mb-1">📝 脱水总结</div>
                                 <div class="text-gray-700 text-sm">{{ item.analysis.summary }}</div>
                               </div>
                             }
@@ -409,6 +447,7 @@ export class DashboardComponent implements OnInit {
   holdings: HoldingChange[] = [];
   loading = false;
   lastUpdate = '--';
+  cacheTime = '';
   
   // Cookie
   cookieStatus = false;
@@ -451,11 +490,7 @@ export class DashboardComponent implements OnInit {
   loadData() {
     switch (this.activeTab) {
       case 'timeline':
-      case 'posts':
-        this.loadTimeline(0);
-        break;
-      case 'comments':
-        this.loadComments();
+        this.loadTimeline();
         break;
       case 'holdings':
         this.loadHoldings();
@@ -473,7 +508,7 @@ export class DashboardComponent implements OnInit {
     this.loadData();
   }
 
-  loadTimeline(statusType: number = 0) {
+  loadTimeline(forceRefresh: boolean = false) {
     if (this.myVips.length === 0) {
       this.timeline = [];
       return;
@@ -481,87 +516,52 @@ export class DashboardComponent implements OnInit {
 
     this.loading = true;
     this.timeline = [];
+    this.cacheTime = '';
     
-    const vipsToLoad = this.selectedVipId === 'all' 
-      ? this.myVips 
-      : this.myVips.filter(v => v.id === Number(this.selectedVipId));
+    const cookie = localStorage.getItem('xueqiu_cookie') || '';
+    
+    // 确定要加载的大V
+    let vipIds: number[] = [];
+    if (this.selectedVipId === 'all') {
+      vipIds = this.myVips.map(v => v.id);
+    } else {
+      vipIds = [Number(this.selectedVipId)];
+    }
 
-    if (vipsToLoad.length === 0) {
+    if (vipIds.length === 0) {
       this.loading = false;
       return;
     }
 
-    const allStatuses: Status[] = [];
-    let loaded = 0;
-    const cookie = localStorage.getItem('xueqiu_cookie') || '';
-    
-    for (const vip of vipsToLoad) {
-      this.http.post<Status[]>('/api/vip/fetch-statuses', {
-        user_id: vip.xueqiu_id,
-        status_type: statusType,
-        count: 10,
-        cookie: cookie
-      }).subscribe({
-        next: (statuses) => {
-          for (const s of statuses) {
-            s.vip_nickname = vip.nickname;
-            s.vip_id = vip.id;
-            allStatuses.push(s);
-          }
-          loaded++;
-          this.finishTimelineLoading(allStatuses, loaded, vipsToLoad.length);
-        },
-        error: () => {
-          loaded++;
-          this.finishTimelineLoading(allStatuses, loaded, vipsToLoad.length);
-        }
-      });
-    }
+    // 调用聚合接口（超时60秒）
+    this.http.post<any>('/api/vip/fetch-all-timeline', {
+      vip_ids: vipIds,
+      count: 10,
+      cookie: cookie,
+      force_refresh: forceRefresh
+    }).pipe(
+      timeout(60000), // 60秒超时
+      catchError(err => {
+        console.error('请求超时或失败', err);
+        return of({ statuses: [], total: 0 });
+      })
+    ).subscribe({
+      next: (result) => {
+        this.timeline = this.filterByTime(result.statuses || []);
+        this.cacheTime = result._cache_time || '';
+        this.loading = false;
+        this.updateLastTime();
+      },
+      error: (err) => {
+        console.error('加载时间线失败', err);
+        this.loading = false;
+        this.timeline = [];
+      }
+    });
   }
 
-  loadComments() {
-    if (this.myVips.length === 0) {
-      this.timeline = [];
-      return;
-    }
-
-    this.loading = true;
-    this.timeline = [];
-    
-    const vipsToLoad = this.selectedVipId === 'all' 
-      ? this.myVips 
-      : this.myVips.filter(v => v.id === Number(this.selectedVipId));
-
-    if (vipsToLoad.length === 0) {
-      this.loading = false;
-      return;
-    }
-
-    const allComments: Status[] = [];
-    let loaded = 0;
-    const cookie = localStorage.getItem('xueqiu_cookie') || '';
-    
-    for (const vip of vipsToLoad) {
-      this.http.post<Status[]>('/api/vip/fetch-comments', {
-        user_id: vip.xueqiu_id,
-        count: 10,
-        cookie: cookie
-      }).subscribe({
-        next: (comments) => {
-          for (const c of comments) {
-            c.vip_nickname = vip.nickname;
-            c.vip_id = vip.id;
-            allComments.push(c);
-          }
-          loaded++;
-          this.finishTimelineLoading(allComments, loaded, vipsToLoad.length);
-        },
-        error: () => {
-          loaded++;
-          this.finishTimelineLoading(allComments, loaded, vipsToLoad.length);
-        }
-      });
-    }
+  refreshTimeline() {
+    this.loadTimeline(true); // 强制刷新
   }
 
   finishTimelineLoading(statuses: Status[], loaded: number, total: number) {

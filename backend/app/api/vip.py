@@ -8,6 +8,7 @@ from sqlalchemy import select
 from typing import List, Optional
 from pydantic import BaseModel
 import os
+import json
 
 from app.core.database import get_db
 from app.models.models import VIPUser
@@ -233,6 +234,196 @@ async def add_vip(
     await db.refresh(new_vip)
     
     return new_vip
+
+
+
+
+# ============ AI 分析相关 ============
+
+@router.get("/analyses")
+async def get_analyses(
+    skip: int = 0,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db)
+):
+    """获取所有 AI 分析结果"""
+    from app.models.models import StatusAnalysis
+    
+    result = await db.execute(
+        select(StatusAnalysis).order_by(StatusAnalysis.created_at.desc()).offset(skip).limit(limit)
+    )
+    analyses = result.scalars().all()
+    
+    enriched = []
+    for a in analyses:
+        vip_result = await db.execute(
+            select(VIPUser).where(VIPUser.xueqiu_id == a.user_id)
+        )
+        vip = vip_result.scalar_one_or_none()
+        
+        enriched.append({
+            "id": a.id, "status_id": a.status_id, "user_id": a.user_id,
+            "vip_nickname": vip.nickname if vip else None,
+            "core_viewpoint": a.core_viewpoint,
+            "related_stocks": json.loads(a.related_stocks) if a.related_stocks else [],
+            "position_signals": json.loads(a.position_signals) if a.position_signals else [],
+            "key_logic": json.loads(a.key_logic) if a.key_logic else [],
+            "risk_warnings": json.loads(a.risk_warnings) if a.risk_warnings else [],
+            "overall_attitude": a.overall_attitude, "summary": a.summary,
+            "raw_content": a.raw_content,
+            "created_at": a.created_at.isoformat() if a.created_at else None,
+        })
+    
+    return enriched
+
+
+@router.post("/analyze-all")
+async def analyze_all_vips(db: AsyncSession = Depends(get_db)):
+    """分析所有大V的最新动态 - 10分钟缓存"""
+    import sys
+    from datetime import datetime
+    from pathlib import Path
+    
+    # 检查缓存
+    cache_key = f"analyze_{get_cache_key_10min()}"
+    if cache_key in _daily_summary_cache:
+        cached = _daily_summary_cache[cache_key]
+        return {
+            "cached": True, 
+            "analyzed": cached.get("analyzed", 0), 
+            "message": "使用缓存数据（10分钟内有效）"
+        }
+    
+    SKILL_PATH = Path(__file__).parent.parent.parent.parent.parent / "skills" / "stock-analyzer" / "scripts"
+    if SKILL_PATH.exists():
+        sys.path.insert(0, str(SKILL_PATH))
+    
+    try:
+        from analyze_text import analyze_text
+        HAS_ANALYZER = True
+    except ImportError:
+        HAS_ANALYZER = False
+    
+    if not HAS_ANALYZER:
+        return {"error": "未安装 stock-analyzer skill"}
+    
+    from app.services.xueqiu_service import XueqiuService
+    from app.models.models import StatusAnalysis
+    
+    service = XueqiuService()
+    if not service.has_cookie():
+        return {"error": "Cookie 未配置"}
+    
+    result = await db.execute(select(VIPUser))
+    vips = result.scalars().all()
+    total_analyzed = 0
+    
+    for vip in vips:
+        statuses = service.get_user_statuses(vip.xueqiu_id, status_type=0, count=5)
+        for status in statuses:
+            existing = await db.execute(select(StatusAnalysis).where(StatusAnalysis.status_id == status.id))
+            if existing.scalar_one_or_none():
+                continue
+            analysis = analyze_text(status.text, status.title)
+            if analysis.error:
+                continue
+            saved = StatusAnalysis(
+                status_id=status.id, user_id=vip.xueqiu_id,
+                core_viewpoint=analysis.core_viewpoint,
+                related_stocks=json.dumps([{"name": s.name, "code": s.code, "attitude": s.attitude, "reason": s.reason} for s in analysis.related_stocks]),
+                position_signals=json.dumps([{"operation": p.operation, "stock": p.stock, "basis": p.basis} for p in analysis.position_signals]),
+                key_logic=json.dumps(analysis.key_logic),
+                risk_warnings=json.dumps(analysis.risk_warnings),
+                overall_attitude=analysis.overall_attitude,
+                summary=analysis.summary, raw_content=status.text[:1000]
+            )
+            db.add(saved)
+            total_analyzed += 1
+        await db.commit()
+    
+    # 缓存结果
+    _daily_summary_cache[cache_key] = {
+        "analyzed": total_analyzed,
+        "cached_at": datetime.now()
+    }
+    
+    return {"cached": False, "analyzed": total_analyzed, "message": f"成功分析 {total_analyzed} 条动态"}
+
+
+# ============ 执行摘要相关 ============
+
+@router.get("/daily-summary")
+async def get_daily_summary(
+    date: str = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """获取每日执行摘要"""
+    from datetime import datetime, timedelta
+    from app.models.models import StatusAnalysis
+    
+    if date:
+        target_date = datetime.strptime(date, "%Y-%m-%d")
+    else:
+        target_date = datetime.now()
+    
+    start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_day = start_of_day + timedelta(days=1)
+    
+    result = await db.execute(select(VIPUser))
+    vips = result.scalars().all()
+    summaries = []
+    
+    for vip in vips:
+        analyses_result = await db.execute(
+            select(StatusAnalysis)
+            .where(StatusAnalysis.user_id == vip.xueqiu_id)
+            .where(StatusAnalysis.created_at >= start_of_day)
+            .where(StatusAnalysis.created_at < end_of_day)
+            .order_by(StatusAnalysis.created_at)
+        )
+        analyses = analyses_result.scalars().all()
+        if not analyses:
+            continue
+        
+        emotion_trajectory = []
+        for a in analyses:
+            emotion_trajectory.append({
+                "time": a.created_at.strftime("%H:%M") if a.created_at else "",
+                "content": (a.raw_content or "")[:200],
+                "attitude": a.overall_attitude,
+                "viewpoint": a.core_viewpoint
+            })
+        
+        emotion_change = ""
+        if len(emotion_trajectory) >= 2:
+            first = emotion_trajectory[0].get("attitude", "中性")
+            last = emotion_trajectory[-1].get("attitude", "中性")
+            emotion_change = f'从"{first}"→"{last}"' if first != last else f"保持{first}"
+        elif len(emotion_trajectory) == 1:
+            emotion_change = emotion_trajectory[0].get("attitude", "中性")
+        
+        key_findings = [a.core_viewpoint for a in analyses if a.core_viewpoint][:3]
+        all_stocks = []
+        for a in analyses:
+            stocks = json.loads(a.related_stocks) if a.related_stocks else []
+            all_stocks.extend(stocks)
+        
+        core_insight = f"{vip.nickname}发布{len(analyses)}条动态，情绪{emotion_change}。"
+        
+        summaries.append({
+            "vip_id": vip.id, "vip_nickname": vip.nickname, "xueqiu_id": vip.xueqiu_id,
+            "post_count": len(analyses), "emotion_change": emotion_change,
+            "emotion_trajectory": emotion_trajectory, "key_findings": key_findings,
+            "related_stocks": all_stocks[:5], "core_insight": core_insight
+        })
+    
+    return {
+        "date": target_date.strftime("%Y-%m-%d"),
+        "collect_time": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "total_vips": len(summaries), "total_posts": sum(s["post_count"] for s in summaries),
+        "summaries": summaries
+    }
+
 
 
 @router.get("/{vip_id}", response_model=VIPResponse)
@@ -883,6 +1074,428 @@ async def fetch_all_holdings(
         return all_holdings[:50]  # 返回最近50条
         
     finally:
+        if os.path.exists(original_cookie_file + ".bak"):
+            if os.path.exists(original_cookie_file):
+                os.remove(original_cookie_file)
+            os.rename(original_cookie_file + ".bak", original_cookie_file)
+
+# ============ 缓存管理 ============
+
+# 简单的内存缓存
+_daily_summary_cache = {}
+
+def get_cache_key_10min(date_str: str = None) -> str:
+    """生成 10 分钟颗粒的缓存键"""
+    from datetime import datetime
+    now = datetime.now()
+    # 计算当前是第几个 10 分钟段 (0-143)
+    minute_slot = (now.hour * 60 + now.minute) // 10
+    date_part = date_str or now.strftime("%Y-%m-%d")
+    return f"{date_part}_{minute_slot:03d}"
+
+@router.post("/refresh-summary")
+async def refresh_daily_summary(
+    date: str = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """刷新每日摘要（重新抓取和分析）- 10分钟缓存"""
+    import sys
+    from datetime import datetime, timedelta
+    from pathlib import Path
+    from app.models.models import StatusAnalysis
+    
+    # 解析日期
+    if date:
+        target_date = datetime.strptime(date, "%Y-%m-%d")
+    else:
+        target_date = datetime.now()
+    
+    # 使用 10 分钟颗粒的缓存键
+    cache_key = get_cache_key_10min(date)
+    
+    # 检查缓存（10 分钟有效）
+    if cache_key in _daily_summary_cache:
+        cached = _daily_summary_cache[cache_key]
+        return {"cached": True, "data": cached["data"], "message": "使用缓存数据（10分钟内有效）"}
+    
+    # 添加 skill 路径
+    SKILL_PATH = Path(__file__).parent.parent.parent.parent.parent / "skills" / "stock-analyzer" / "scripts"
+    if SKILL_PATH.exists():
+        sys.path.insert(0, str(SKILL_PATH))
+    
+    try:
+        from analyze_text import analyze_text
+        HAS_ANALYZER = True
+    except ImportError:
+        HAS_ANALYZER = False
+    
+    if not HAS_ANALYZER:
+        return {"error": "未安装 stock-analyzer skill"}
+    
+    from app.services.xueqiu_service import XueqiuService
+    
+    service = XueqiuService()
+    if not service.has_cookie():
+        return {"error": "Cookie 未配置"}
+    
+    # 抓取所有大V最新动态
+    result = await db.execute(select(VIPUser))
+    vips = result.scalars().all()
+    
+    total_new = 0
+    total_analyzed = 0
+    
+    for vip in vips:
+        # 抓取最新动态
+        statuses = service.get_user_statuses(vip.xueqiu_id, status_type=0, count=10)
+        total_new += len(statuses)
+        
+        for status in statuses:
+            # 检查是否已分析
+            existing = await db.execute(
+                select(StatusAnalysis).where(StatusAnalysis.status_id == status.id)
+            )
+            if existing.scalar_one_or_none():
+                continue
+            
+            # 分析
+            analysis = analyze_text(status.text, status.title)
+            
+            if analysis.error:
+                continue
+            
+            # 保存
+            saved = StatusAnalysis(
+                status_id=status.id,
+                user_id=vip.xueqiu_id,
+                core_viewpoint=analysis.core_viewpoint,
+                related_stocks=json.dumps([{
+                    "name": s.name, "code": s.code,
+                    "attitude": s.attitude, "reason": s.reason
+                } for s in analysis.related_stocks]),
+                position_signals=json.dumps([{
+                    "operation": p.operation, "stock": p.stock, "basis": p.basis
+                } for p in analysis.position_signals]),
+                key_logic=json.dumps(analysis.key_logic),
+                risk_warnings=json.dumps(analysis.risk_warnings),
+                overall_attitude=analysis.overall_attitude,
+                summary=analysis.summary,
+                raw_content=status.text[:1000]
+            )
+            db.add(saved)
+            total_analyzed += 1
+        
+        await db.commit()
+    
+    # 生成摘要数据
+    start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_day = start_of_day + timedelta(days=1)
+    
+    summaries = []
+    for vip in vips:
+        analyses_result = await db.execute(
+            select(StatusAnalysis)
+            .where(StatusAnalysis.user_id == vip.xueqiu_id)
+            .where(StatusAnalysis.created_at >= start_of_day)
+            .where(StatusAnalysis.created_at < end_of_day)
+            .order_by(StatusAnalysis.created_at)
+        )
+        analyses = analyses_result.scalars().all()
+        if not analyses:
+            continue
+        
+        emotion_trajectory = []
+        for a in analyses:
+            emotion_trajectory.append({
+                "time": a.created_at.strftime("%H:%M") if a.created_at else "",
+                "content": (a.raw_content or "")[:200],
+                "attitude": a.overall_attitude,
+                "viewpoint": a.core_viewpoint
+            })
+        
+        emotion_change = ""
+        if len(emotion_trajectory) >= 2:
+            first = emotion_trajectory[0].get("attitude", "中性")
+            last = emotion_trajectory[-1].get("attitude", "中性")
+            emotion_change = f'从"{first}"→"{last}"' if first != last else f"保持{first}"
+        elif len(emotion_trajectory) == 1:
+            emotion_change = emotion_trajectory[0].get("attitude", "中性")
+        
+        key_findings = [a.core_viewpoint for a in analyses if a.core_viewpoint][:3]
+        all_stocks = []
+        for a in analyses:
+            stocks = json.loads(a.related_stocks) if a.related_stocks else []
+            all_stocks.extend(stocks)
+        
+        core_insight = f"{vip.nickname}发布{len(analyses)}条动态，情绪{emotion_change}。"
+        
+        summaries.append({
+            "vip_id": vip.id, "vip_nickname": vip.nickname, "xueqiu_id": vip.xueqiu_id,
+            "post_count": len(analyses), "emotion_change": emotion_change,
+            "emotion_trajectory": emotion_trajectory, "key_findings": key_findings,
+            "related_stocks": all_stocks[:5], "core_insight": core_insight
+        })
+    
+    summary_data = {
+        "date": target_date.strftime("%Y-%m-%d"),
+        "collect_time": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "total_vips": len(summaries),
+        "total_posts": sum(s["post_count"] for s in summaries),
+        "summaries": summaries
+    }
+    
+    # 缓存结果
+    _daily_summary_cache[cache_key] = {
+        "data": summary_data,
+        "cached_at": datetime.now()
+    }
+    
+    return {
+        "cached": False,
+        "data": summary_data,
+        "new_posts": total_new,
+        "new_analyzed": total_analyzed,
+        "message": f"刷新成功，新增 {total_new} 条动态，分析 {total_analyzed} 条"
+    }
+
+
+# ============ 聚合接口 ============
+
+class FetchAllStatusesRequest(BaseModel):
+    """聚合请求"""
+    vip_ids: list = []  # 可选，指定大V ID 列表，空则获取所有
+    count: int = 10  # 每种类型数量
+    cookie: str = ""
+    force_refresh: bool = False  # 强制刷新
+
+
+@router.post("/fetch-all-timeline")
+async def fetch_all_timeline(
+    data: FetchAllStatusesRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    聚合获取所有大V的时间线数据（原发布 + 交易动态 + 评论回复）
+    
+    缓存策略:
+    - 没数据 → 重新拉取
+    - 10分钟内有缓存 → 返回缓存
+    - 超过10分钟 → 拉增量数据并更新缓存
+    """
+    import os
+    import sys
+    from datetime import datetime, timedelta
+    from pathlib import Path
+    from app.services.xueqiu_service import XueqiuService
+    from app.models.models import StatusAnalysis
+    
+    # 生成缓存键（基于请求参数 + 10分钟时间槽）
+    cache_key = f"timeline_{','.join(map(str, sorted(data.vip_ids))) if data.vip_ids else 'all'}_{get_cache_key_10min()}"
+    
+    # 检查内存缓存（10分钟有效）
+    if not data.force_refresh and cache_key in _daily_summary_cache:
+        cached = _daily_summary_cache[cache_key]
+        cached_data = cached["data"]
+        cached_data["_cached"] = True
+        cached_data["_cache_time"] = cached["cached_at"].strftime("%Y-%m-%d %H:%M:%S")
+        return cached_data
+    
+    # 检查数据库中是否有分析数据
+    existing_count = await db.execute(select(StatusAnalysis))
+    has_existing_data = len(existing_count.scalars().all()) > 0
+    
+    # 如果有数据且不是强制刷新，检查是否需要增量更新
+    if has_existing_data and not data.force_refresh:
+        # 返回现有的分析数据（后续会合并新数据）
+        pass
+    
+    # 临时保存 Cookie
+    cookie_file = os.path.expanduser("~/.xueqiu_cookie_temp")
+    original_cookie_file = os.path.expanduser("~/.xueqiu_cookie")
+    
+    try:
+        # 设置 Cookie
+        if data.cookie:
+            with open(cookie_file, "w") as f:
+                f.write(data.cookie)
+            if os.path.exists(original_cookie_file):
+                os.rename(original_cookie_file, original_cookie_file + ".bak")
+            os.rename(cookie_file, original_cookie_file)
+        
+        service = XueqiuService()
+        
+        # 获取所有大V
+        if data.vip_ids:
+            result = await db.execute(
+                select(VIPUser).where(VIPUser.id.in_(data.vip_ids))
+            )
+        else:
+            result = await db.execute(select(VIPUser))
+        vips = result.scalars().all()
+        
+        all_statuses = []
+        new_analyzed = 0
+        
+        for vip in vips:
+            # 1. 时间线 - 原发布 (type=0)
+            try:
+                timeline = service.get_user_statuses(vip.xueqiu_id, status_type=0, count=data.count)
+                for s in timeline:
+                    all_statuses.append({
+                        "id": s.id,
+                        "user_id": s.user_id,
+                        "text": s.text,
+                        "title": s.title,
+                        "link": s.link,
+                        "created_at": s.created_at,
+                        "retweet_count": s.retweet_count,
+                        "reply_count": s.reply_count,
+                        "like_count": s.like_count,
+                        "vip_nickname": vip.nickname,
+                        "vip_id": vip.id,
+                        "data_type": "timeline"
+                    })
+            except Exception as e:
+                print(f"获取 {vip.nickname} 时间线失败: {e}")
+            
+            # 2. 发言 - 交易动态 (type=11)
+            try:
+                posts = service.get_user_statuses(vip.xueqiu_id, status_type=11, count=data.count)
+                for s in posts:
+                    all_statuses.append({
+                        "id": s.id,
+                        "user_id": s.user_id,
+                        "text": s.text,
+                        "title": s.title,
+                        "link": s.link,
+                        "created_at": s.created_at,
+                        "retweet_count": s.retweet_count,
+                        "reply_count": s.reply_count,
+                        "like_count": s.like_count,
+                        "vip_nickname": vip.nickname,
+                        "vip_id": vip.id,
+                        "data_type": "post"
+                    })
+            except Exception as e:
+                print(f"获取 {vip.nickname} 发言失败: {e}")
+            
+            # 3. 评论回复
+            try:
+                comments = service.get_user_comments(vip.xueqiu_id, count=data.count)
+                for s in comments:
+                    all_statuses.append({
+                        "id": s.id,
+                        "user_id": s.user_id,
+                        "text": s.text,
+                        "title": s.title,
+                        "link": s.link,
+                        "created_at": s.created_at,
+                        "retweet_count": s.retweet_count,
+                        "reply_count": s.reply_count,
+                        "like_count": s.like_count,
+                        "vip_nickname": vip.nickname,
+                        "vip_id": vip.id,
+                        "data_type": "comment"
+                    })
+            except Exception as e:
+                print(f"获取 {vip.nickname} 评论失败: {e}")
+        
+        # 去重：基于 id 去重
+        seen_ids = set()
+        unique_statuses = []
+        for status in all_statuses:
+            status_id = status.get("id")
+            if status_id and status_id not in seen_ids:
+                seen_ids.add(status_id)
+                unique_statuses.append(status)
+        
+        # AI 分析并缓存
+        SKILL_PATH = Path(__file__).parent.parent.parent.parent.parent / "skills" / "stock-analyzer" / "scripts"
+        if SKILL_PATH.exists():
+            sys.path.insert(0, str(SKILL_PATH))
+        
+        try:
+            from analyze_text import analyze_text
+            HAS_ANALYZER = True
+        except ImportError:
+            HAS_ANALYZER = False
+        
+        if HAS_ANALYZER:
+            for status in unique_statuses:
+                # 检查是否已有分析缓存
+                existing = await db.execute(
+                    select(StatusAnalysis).where(StatusAnalysis.status_id == status["id"])
+                )
+                cached_analysis = existing.scalar_one_or_none()
+                
+                if cached_analysis:
+                    # 使用缓存的分析结果
+                    status["analysis"] = {
+                        "coreViewpoint": cached_analysis.core_viewpoint,
+                        "relatedStocks": json.loads(cached_analysis.related_stocks) if cached_analysis.related_stocks else [],
+                        "overallAttitude": cached_analysis.overall_attitude,
+                        "summary": cached_analysis.summary,
+                        "_cached": True
+                    }
+                else:
+                    # 新分析
+                    try:
+                        analysis = analyze_text(status["text"], status.get("title", ""))
+                        if not analysis.error:
+                            # 保存到数据库
+                            saved = StatusAnalysis(
+                                status_id=status["id"],
+                                user_id=status["user_id"],
+                                core_viewpoint=analysis.core_viewpoint,
+                                related_stocks=json.dumps([{
+                                    "name": s.name, "code": s.code,
+                                    "attitude": s.attitude, "reason": s.reason
+                                } for s in analysis.related_stocks]),
+                                position_signals=json.dumps([{
+                                    "operation": p.operation, "stock": p.stock, "basis": p.basis
+                                } for p in analysis.position_signals]),
+                                key_logic=json.dumps(analysis.key_logic),
+                                risk_warnings=json.dumps(analysis.risk_warnings),
+                                overall_attitude=analysis.overall_attitude,
+                                summary=analysis.summary,
+                                raw_content=status["text"][:1000]
+                            )
+                            db.add(saved)
+                            await db.commit()
+                            new_analyzed += 1
+                            
+                            status["analysis"] = {
+                                "coreViewpoint": analysis.core_viewpoint,
+                                "relatedStocks": [{"name": s.name, "code": s.code, "attitude": s.attitude, "reason": s.reason} for s in analysis.related_stocks],
+                                "overallAttitude": analysis.overall_attitude,
+                                "summary": analysis.summary,
+                                "_cached": False
+                            }
+                    except Exception as e:
+                        print(f"分析失败: {e}")
+        
+        # 按时间倒序排列
+        unique_statuses.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        
+        result_data = {
+            "total": len(unique_statuses),
+            "vips_count": len(vips),
+            "new_analyzed": new_analyzed,
+            "statuses": unique_statuses,
+            "_cached": False,
+            "_cache_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        
+        # 缓存结果
+        _daily_summary_cache[cache_key] = {
+            "data": result_data,
+            "cached_at": datetime.now()
+        }
+        
+        return result_data
+        
+    finally:
+        # 恢复原始 Cookie
         if os.path.exists(original_cookie_file + ".bak"):
             if os.path.exists(original_cookie_file):
                 os.remove(original_cookie_file)

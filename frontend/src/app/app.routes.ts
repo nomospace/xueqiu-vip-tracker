@@ -24,5 +24,9 @@ export const routes: Routes = [
   {
     path: 'holdings',
     loadComponent: () => import('./pages/holding-list/holding-list.component').then(m => m.HoldingListComponent)
+  },
+  {
+    path: 'summary',
+    loadComponent: () => import('./pages/daily-summary/daily-summary.component').then(m => m.DailySummaryComponent)
   }
 ];

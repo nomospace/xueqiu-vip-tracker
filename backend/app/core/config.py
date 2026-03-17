@@ -3,7 +3,7 @@
 """
 
 from pydantic_settings import BaseSettings
-from typing import List
+from typing import List, Optional
 
 
 class Settings(BaseSettings):
@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "your-secret-key-change-in-production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24小时
+    
+    # AI API Keys
+    DASHSCOPE_API_KEY: Optional[str] = None  # 阿里通义千问
+    DEEPSEEK_API_KEY: Optional[str] = None   # DeepSeek
     
     class Config:
         env_file = ".env"
