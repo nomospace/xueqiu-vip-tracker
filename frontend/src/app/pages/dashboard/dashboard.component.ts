@@ -92,8 +92,8 @@ interface HoldingChange {
             </button>
           </div>
           
-          <!-- 顶部导航 Tab -->
-          <nav class="flex gap-1 mt-3 -mb-2 overflow-x-auto">
+          <!-- 顶部导航 Tab（移动端隐藏，由底部 Tab 替代） -->
+          <nav class="hidden sm:flex gap-1 mt-3 -mb-2 overflow-x-auto">
             <a routerLink="/" 
                class="flex-shrink-0 px-4 py-2 text-sm font-medium rounded-t-lg transition bg-white/20">
               📅 时间线
@@ -111,70 +111,8 @@ interface HoldingChange {
       </header>
 
       <main class="max-w-7xl mx-auto px-4 py-4 space-y-4">
-        <!-- ========== 状态看板（移动端卡片化） ========== -->
-        <section class="grid grid-cols-3 gap-3">
-          <!-- Cookie 状态 -->
-          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-3 text-center"
-               [class.border-green-200]="cookieStatus"
-               [class.border-amber-200]="!cookieStatus">
-            <div class="text-2xl mb-1">{{ cookieStatus ? '✅' : '⚠️' }}</div>
-            <div class="text-xs text-slate-500">Cookie</div>
-            <div class="text-xs font-medium mt-1" 
-                 [class.text-green-600]="cookieStatus"
-                 [class.text-amber-600]="!cookieStatus">
-              {{ cookieStatus ? '已配置' : '未配置' }}
-            </div>
-          </div>
-          
-          <!-- 关注大V -->
-          <a routerLink="/vip" class="bg-white rounded-xl shadow-sm border border-slate-200 p-3 text-center hover:border-blue-300 transition">
-            <div class="text-2xl mb-1">👥</div>
-            <div class="text-xs text-slate-500">关注大V</div>
-            <div class="text-lg font-bold text-blue-600 mt-1">{{ myVips.length }}</div>
-          </a>
-          
-          <!-- 今日新帖 -->
-          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-3 text-center">
-            <div class="text-2xl mb-1">📝</div>
-            <div class="text-xs text-slate-500">今日新帖</div>
-            <div class="text-lg font-bold text-slate-700 mt-1">{{ timeline.length }}</div>
-          </div>
-        </section>
-
-        <!-- ========== 筛选栏 ========== -->
-        <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-3">
-          <div class="flex flex-wrap gap-2 items-center">
-            <select 
-              [(ngModel)]="selectedVipId" 
-              (change)="onFilterChange()"
-              class="flex-1 min-w-[120px] border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
-              <option value="all">全部大V ({{ myVips.length }})</option>
-              @for (vip of myVips; track vip.id) {
-                <option [value]="vip.id">{{ vip.nickname }}</option>
-              }
-            </select>
-            <select 
-              [(ngModel)]="timeRange"
-              (change)="onFilterChange()"
-              class="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
-              <option value="today">今日</option>
-              <option value="3d">近3天</option>
-              <option value="7d">近7天</option>
-              <option value="30d">近30天</option>
-            </select>
-          </div>
-        </section>
-
         <!-- ========== 时间线内容 ========== -->
         <section class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-          <!-- 标题栏 -->
-          <div class="flex items-center justify-between px-4 py-3 border-b border-slate-100 bg-slate-50">
-            <span class="font-semibold text-slate-700">📅 时间线</span>
-            @if (cacheTime) {
-              <span class="text-xs text-slate-400">{{ cacheTime }}</span>
-            }
-          </div>
-
           <!-- 内容区域 -->
           <div class="divide-y divide-slate-100">
             @if (loading) {

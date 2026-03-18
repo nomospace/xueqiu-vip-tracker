@@ -39,8 +39,8 @@ interface VIPUser {
             </button>
           </div>
           
-          <!-- 顶部导航 Tab -->
-          <nav class="flex gap-1 mt-3 -mb-2 overflow-x-auto">
+          <!-- 顶部导航 Tab（移动端隐藏，由底部 Tab 替代） -->
+          <nav class="hidden sm:flex gap-1 mt-3 -mb-2 overflow-x-auto">
             <a routerLink="/" 
                class="flex-shrink-0 px-4 py-2 text-sm font-medium hover:bg-white/10 rounded-t-lg transition">
               📅 时间线
