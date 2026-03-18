@@ -79,7 +79,6 @@ interface HoldingChange {
               <div class="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center text-lg">📊</div>
               <div>
                 <h1 class="text-lg font-bold">脱水雪球</h1>
-                <p class="text-blue-100 text-xs hidden sm:block">大V观点脱水，核心信息一键获取</p>
               </div>
             </div>
             
