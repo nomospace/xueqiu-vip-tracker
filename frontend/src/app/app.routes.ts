@@ -22,6 +22,10 @@ export const routes: Routes = [
     loadComponent: () => import('./pages/holding-list/holding-list.component').then(m => m.HoldingListComponent)
   },
   {
+    path: 'watchlist',
+    loadComponent: () => import('./pages/watchlist-changes/watchlist-changes.component').then(m => m.WatchlistChangesComponent)
+  },
+  {
     path: 'summary',
     loadComponent: () => import('./pages/daily-summary/daily-summary.component').then(m => m.DailySummaryComponent)
   }

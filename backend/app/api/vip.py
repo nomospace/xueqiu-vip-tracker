@@ -1559,6 +1559,457 @@ async def fetch_all_timeline(
                 os.rename(original_cookie_file + ".bak", original_cookie_file)
 
 
+# ============ 自选股相关 ============
+
+class SyncWatchlistRequest(BaseModel):
+    cookie: str = ""
+    cn_only: bool = True  # 只同步沪深股票
+
+
+@router.get("/{vip_id}/watchlist")
+async def get_vip_watchlist(
+    vip_id: int,
+    cn_only: bool = True,
+    db: AsyncSession = Depends(get_db)
+):
+    """获取大V自选股列表"""
+    from app.models.models import VIPWatchlist
+    from datetime import datetime
+    
+    # 获取最新快照日期
+    result = await db.execute(
+        select(VIPWatchlist)
+        .where(VIPWatchlist.vip_id == vip_id)
+        .order_by(VIPWatchlist.snapshot_date.desc())
+    )
+    watchlist = result.scalars().all()
+    
+    if not watchlist:
+        return {
+            "vip_id": vip_id,
+            "stocks": [],
+            "snapshot_date": None,
+            "message": "暂无自选股数据，请先同步"
+        }
+    
+    # 获取快照日期
+    snapshot_date = watchlist[0].snapshot_date if watchlist else None
+    
+    # 过滤沪深股票
+    if cn_only:
+        watchlist = [w for w in watchlist if w.is_cn == 1]
+    
+    # 获取 VIP 信息
+    vip_result = await db.execute(select(VIPUser).where(VIPUser.id == vip_id))
+    vip = vip_result.scalar_one_or_none()
+    
+    return {
+        "vip_id": vip_id,
+        "vip_nickname": vip.nickname if vip else None,
+        "stocks": [
+            {
+                "stock_code": w.stock_code,
+                "stock_name": w.stock_name,
+                "market": w.market,
+                "is_cn": w.is_cn == 1
+            }
+            for w in watchlist
+        ],
+        "snapshot_date": snapshot_date,
+        "total_count": len(watchlist)
+    }
+
+
+@router.post("/{vip_id}/watchlist/sync")
+async def sync_vip_watchlist(
+    vip_id: int,
+    data: SyncWatchlistRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """同步大V自选股（检测变更）"""
+    import os
+    from datetime import datetime
+    from app.models.models import VIPWatchlist, WatchlistChange
+    
+    # 获取 VIP 信息
+    result = await db.execute(select(VIPUser).where(VIPUser.id == vip_id))
+    vip = result.scalar_one_or_none()
+    
+    if not vip:
+        raise HTTPException(status_code=404, detail="大V不存在")
+    
+    # 临时保存 Cookie
+    cookie_file = os.path.expanduser("~/.xueqiu_cookie_temp")
+    original_cookie_file = os.path.expanduser("~/.xueqiu_cookie")
+    
+    use_frontend_cookie = False
+    if data.cookie and 'xq_a_token' in data.cookie:
+        use_frontend_cookie = True
+    
+    try:
+        if use_frontend_cookie:
+            with open(cookie_file, "w") as f:
+                f.write(data.cookie)
+            if os.path.exists(original_cookie_file):
+                os.rename(original_cookie_file, original_cookie_file + ".bak")
+            os.rename(cookie_file, original_cookie_file)
+        
+        from app.services.xueqiu_service import XueqiuService
+        service = XueqiuService()
+        
+        # 获取当前自选股
+        current_stocks = service.get_user_watchlist(vip.xueqiu_id)
+        
+        if not current_stocks:
+            return {
+                "vip_id": vip_id,
+                "success": False,
+                "message": "获取自选股失败，请检查 Cookie 是否有效"
+            }
+        
+        # 过滤沪深股票
+        if data.cn_only:
+            current_stocks = [s for s in current_stocks if s.get('is_cn')]
+        
+        today = datetime.now().strftime("%Y-%m-%d")
+        
+        # 获取上一次的快照
+        prev_result = await db.execute(
+            select(VIPWatchlist)
+            .where(VIPWatchlist.vip_id == vip_id)
+            .order_by(VIPWatchlist.snapshot_date.desc())
+            .limit(100)
+        )
+        prev_stocks = {w.stock_code: w for w in prev_result.scalars().all()}
+        
+        # 找出变更
+        added = []
+        removed = []
+        current_codes = {s['stock_code'] for s in current_stocks}
+        prev_codes = set(prev_stocks.keys())
+        
+        # 新增的股票
+        for stock in current_stocks:
+            if stock['stock_code'] not in prev_codes:
+                added.append(stock)
+        
+        # 删除的股票
+        for code, w in prev_stocks.items():
+            if code not in current_codes:
+                removed.append({
+                    'stock_code': w.stock_code,
+                    'stock_name': w.stock_name,
+                    'market': w.market
+                })
+        
+        # 保存变更记录
+        for stock in added:
+            change = WatchlistChange(
+                vip_id=vip_id,
+                stock_code=stock['stock_code'],
+                stock_name=stock['stock_name'],
+                market=stock.get('market', ''),
+                change_type='add',
+                detected_date=today
+            )
+            db.add(change)
+        
+        for stock in removed:
+            change = WatchlistChange(
+                vip_id=vip_id,
+                stock_code=stock['stock_code'],
+                stock_name=stock['stock_name'],
+                market=stock.get('market', ''),
+                change_type='remove',
+                detected_date=today
+            )
+            db.add(change)
+        
+        # 删除旧的快照，保存新快照
+        await db.execute(
+            VIPWatchlist.__table__.delete().where(VIPWatchlist.vip_id == vip_id)
+        )
+        
+        for stock in current_stocks:
+            snapshot = VIPWatchlist(
+                vip_id=vip_id,
+                stock_code=stock['stock_code'],
+                stock_name=stock['stock_name'],
+                market=stock.get('market', ''),
+                is_cn=1 if stock.get('is_cn') else 0,
+                snapshot_date=today
+            )
+            db.add(snapshot)
+        
+        await db.commit()
+        
+        return {
+            "vip_id": vip_id,
+            "vip_nickname": vip.nickname,
+            "success": True,
+            "snapshot_date": today,
+            "total_count": len(current_stocks),
+            "added": added,
+            "removed": removed,
+            "added_count": len(added),
+            "removed_count": len(removed),
+            "message": f"同步完成，新增 {len(added)} 只，删除 {len(removed)} 只"
+        }
+        
+    except Exception as e:
+        await db.rollback()
+        return {
+            "vip_id": vip_id,
+            "success": False,
+            "message": f"同步失败: {str(e)}"
+        }
+    finally:
+        if use_frontend_cookie:
+            if os.path.exists(original_cookie_file + ".bak"):
+                if os.path.exists(original_cookie_file):
+                    os.remove(original_cookie_file)
+                os.rename(original_cookie_file + ".bak", original_cookie_file)
+
+
+@router.get("/watchlist/changes")
+async def get_watchlist_changes(
+    vip_id: int = None,
+    days: int = 7,
+    db: AsyncSession = Depends(get_db)
+):
+    """获取自选股变更记录"""
+    from app.models.models import WatchlistChange
+    from datetime import datetime, timedelta
+    
+    # 计算日期范围
+    start_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+    
+    # 构建查询
+    query = select(WatchlistChange).where(
+        WatchlistChange.detected_date >= start_date
+    ).order_by(WatchlistChange.detected_date.desc())
+    
+    if vip_id:
+        query = query.where(WatchlistChange.vip_id == vip_id)
+    
+    result = await db.execute(query)
+    changes = result.scalars().all()
+    
+    # 获取 VIP 信息
+    enriched_changes = []
+    for c in changes:
+        vip_result = await db.execute(select(VIPUser).where(VIPUser.id == c.vip_id))
+        vip = vip_result.scalar_one_or_none()
+        
+        enriched_changes.append({
+            "id": c.id,
+            "vip_id": c.vip_id,
+            "vip_nickname": vip.nickname if vip else None,
+            "stock_code": c.stock_code,
+            "stock_name": c.stock_name,
+            "market": c.market,
+            "change_type": c.change_type,
+            "detected_date": c.detected_date,
+            "detected_at": c.detected_at.isoformat() if c.detected_at else None
+        })
+    
+    return {
+        "total": len(enriched_changes),
+        "days": days,
+        "changes": enriched_changes
+    }
+
+
+@router.post("/watchlist/sync-all")
+async def sync_all_watchlist(
+    data: SyncWatchlistRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """同步所有大V的自选股"""
+    import os
+    from datetime import datetime
+    from app.models.models import VIPWatchlist, WatchlistChange
+    
+    # 获取所有大V
+    result = await db.execute(select(VIPUser))
+    vips = result.scalars().all()
+    
+    if not vips:
+        return {"success": False, "message": "没有关注任何大V"}
+    
+    # 清理 Cookie - 移除无效字符
+    cookie_raw = data.cookie or ""
+    # 移除省略号和截断字符
+    cookie_clean = cookie_raw.replace('…', '').replace('\\u2026', '')
+    # 移除其他可能导致编码问题的字符
+    cookie_clean = ''.join(c for c in cookie_clean if ord(c) < 65536 and not (0xD800 <= ord(c) <= 0xDFFF))
+    
+    # 检查 Cookie 是否有效
+    if not cookie_clean or 'xq_a_token' not in cookie_clean:
+        return {
+            "success": False,
+            "message": "Cookie 无效：需要包含 xq_a_token 和 u 字段",
+            "hint": "雪球自选股是私有数据，需要大V登录后的 Cookie 才能获取"
+        }
+    
+    # 检查是否包含用户 ID
+    if 'u=' not in cookie_clean and '=u' not in cookie_clean and 'u' not in cookie_clean.split(';')[0] if '=' in cookie_clean.split(';')[0] else False:
+        # 放宽检查，只要有 xq_a_token 就尝试
+        pass
+    
+    # 临时保存 Cookie
+    cookie_file = os.path.expanduser("~/.xueqiu_cookie_temp")
+    original_cookie_file = os.path.expanduser("~/.xueqiu_cookie")
+    
+    results = []
+    total_added = 0
+    total_removed = 0
+    
+    try:
+        # 使用清理后的 Cookie
+        with open(cookie_file, "w", encoding="utf-8") as f:
+            f.write(cookie_clean)
+        if os.path.exists(original_cookie_file):
+            os.rename(original_cookie_file, original_cookie_file + ".bak")
+        os.rename(cookie_file, original_cookie_file)
+        
+        from app.services.xueqiu_service import XueqiuService
+        service = XueqiuService()
+        
+        for vip in vips:
+            try:
+                # 获取当前自选股
+                current_stocks = service.get_user_watchlist(vip.xueqiu_id)
+                
+                if not current_stocks:
+                    # 检查是否是权限问题
+                    results.append({
+                        "vip_id": vip.id,
+                        "vip_nickname": vip.nickname,
+                        "success": False,
+                        "message": "无法获取自选股（权限不足或无数据）"
+                    })
+                    continue
+                
+                # 过滤沪深股票
+                if data.cn_only:
+                    current_stocks = [s for s in current_stocks if s.get('is_cn')]
+                
+                today = datetime.now().strftime("%Y-%m-%d")
+                
+                # 获取上一次的快照
+                prev_result = await db.execute(
+                    select(VIPWatchlist)
+                    .where(VIPWatchlist.vip_id == vip.id)
+                    .order_by(VIPWatchlist.snapshot_date.desc())
+                    .limit(100)
+                )
+                prev_stocks = {w.stock_code: w for w in prev_result.scalars().all()}
+                
+                # 找出变更
+                added = []
+                removed = []
+                current_codes = {s['stock_code'] for s in current_stocks}
+                prev_codes = set(prev_stocks.keys())
+                
+                for stock in current_stocks:
+                    if stock['stock_code'] not in prev_codes:
+                        added.append(stock)
+                
+                for code, w in prev_stocks.items():
+                    if code not in current_codes:
+                        removed.append({
+                            'stock_code': w.stock_code,
+                            'stock_name': w.stock_name,
+                            'market': w.market
+                        })
+                
+                # 保存变更记录
+                for stock in added:
+                    change = WatchlistChange(
+                        vip_id=vip.id,
+                        stock_code=stock['stock_code'],
+                        stock_name=stock['stock_name'],
+                        market=stock.get('market', ''),
+                        change_type='add',
+                        detected_date=today
+                    )
+                    db.add(change)
+                
+                for stock in removed:
+                    change = WatchlistChange(
+                        vip_id=vip.id,
+                        stock_code=stock['stock_code'],
+                        stock_name=stock['stock_name'],
+                        market=stock.get('market', ''),
+                        change_type='remove',
+                        detected_date=today
+                    )
+                    db.add(change)
+                
+                # 更新快照
+                await db.execute(
+                    VIPWatchlist.__table__.delete().where(VIPWatchlist.vip_id == vip.id)
+                )
+                
+                for stock in current_stocks:
+                    snapshot = VIPWatchlist(
+                        vip_id=vip.id,
+                        stock_code=stock['stock_code'],
+                        stock_name=stock['stock_name'],
+                        market=stock.get('market', ''),
+                        is_cn=1 if stock.get('is_cn') else 0,
+                        snapshot_date=today
+                    )
+                    db.add(snapshot)
+                
+                total_added += len(added)
+                total_removed += len(removed)
+                
+                results.append({
+                    "vip_id": vip.id,
+                    "vip_nickname": vip.nickname,
+                    "success": True,
+                    "total_count": len(current_stocks),
+                    "added_count": len(added),
+                    "removed_count": len(removed)
+                })
+                
+            except Exception as e:
+                import traceback
+                print(f"同步 {vip.nickname} 失败: {e}")
+                print(traceback.format_exc())
+                results.append({
+                    "vip_id": vip.id,
+                    "vip_nickname": vip.nickname,
+                    "success": False,
+                    "message": str(e)[:100]
+                })
+        
+        await db.commit()
+        
+        return {
+            "success": True,
+            "total_vips": len(vips),
+            "total_added": total_added,
+            "total_removed": total_removed,
+            "results": results,
+            "message": f"同步完成，共 {len(vips)} 位大V，新增 {total_added} 只，删除 {total_removed} 只"
+        }
+        
+    except Exception as e:
+        import traceback
+        print(f"同步失败: {e}")
+        print(traceback.format_exc())
+        await db.rollback()
+        return {"success": False, "message": str(e)}
+    finally:
+        if os.path.exists(original_cookie_file + ".bak"):
+            if os.path.exists(original_cookie_file):
+                os.remove(original_cookie_file)
+            os.rename(original_cookie_file + ".bak", original_cookie_file)
+
+
 # ============ 大V信息同步 ============
 
 @router.post("/sync-vip-info")

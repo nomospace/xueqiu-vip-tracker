@@ -93,6 +93,10 @@ interface GlobalInsight {
                class="flex-shrink-0 px-4 py-2 text-sm font-medium rounded-t-lg transition bg-white/20">
               📊 今日摘要
             </a>
+            <a routerLink="/watchlist" 
+               class="flex-shrink-0 px-4 py-2 text-sm font-medium hover:bg-white/10 rounded-t-lg transition">
+              ⭐ 自选变更
+            </a>
             <a routerLink="/vip" 
                class="flex-shrink-0 px-4 py-2 text-sm font-medium hover:bg-white/10 rounded-t-lg transition">
               👥 大V管理
@@ -257,6 +261,10 @@ interface GlobalInsight {
           <a routerLink="/summary" class="flex flex-col items-center py-1 px-3 text-blue-600">
             <span class="text-xl">📊</span>
             <span class="text-xs mt-0.5">摘要</span>
+          </a>
+          <a routerLink="/watchlist" class="flex flex-col items-center py-1 px-3 text-slate-500">
+            <span class="text-xl">⭐</span>
+            <span class="text-xs mt-0.5">自选</span>
           </a>
           <a routerLink="/vip" class="flex flex-col items-center py-1 px-3 text-slate-500">
             <span class="text-xl">👥</span>

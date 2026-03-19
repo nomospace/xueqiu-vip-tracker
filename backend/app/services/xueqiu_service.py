@@ -93,12 +93,17 @@ class XueqiuService:
                 with open(self.cookie_file, "r", encoding="utf-8") as f:
                     self.cookie = f.read().strip()
                 
+                # 清理无效字符
+                self.cookie = self.cookie.replace('…', '').replace('\\u2026', '')
+                
                 # 解析 Cookie
                 for item in self.cookie.split(';'):
                     item = item.strip()
                     if '=' in item:
                         k, v = item.split('=', 1)
-                        self.cookies[k.strip()] = v.strip()
+                        # 清理值中的无效字符
+                        v_clean = v.replace('…', '').strip()
+                        self.cookies[k.strip()] = v_clean
             except Exception as e:
                 print(f"加载 Cookie 失败: {e}")
         return self.cookie
@@ -343,6 +348,81 @@ class XueqiuService:
             
         except Exception as e:
             print(f"获取调仓历史失败: {e}")
+            return []
+    
+    def get_user_watchlist(self, user_id: str) -> List[Dict[str, Any]]:
+        """
+        获取用户自选股列表
+        
+        Args:
+            user_id: 雪球用户 ID
+            
+        Returns:
+            自选股列表，包含股票代码、名称、市场等信息
+        """
+        self._random_delay()
+        
+        try:
+            # 雪球自选股 API
+            url = f"{XUEQIU_API}/v4/user/{user_id}/stocks.json"
+            
+            print(f"[XueqiuService] 获取用户 {user_id} 的自选股...")
+            
+            resp = self.session.get(url, timeout=15)
+            
+            print(f"[XueqiuService] 响应状态: {resp.status_code}, Content-Type: {resp.headers.get('Content-Type', '')}")
+            
+            if resp.status_code == 403:
+                print(f"[XueqiuService] 403 Forbidden - 自选股是私有数据，需要用户自己的 Cookie")
+                return []
+            
+            if resp.status_code == 200 and 'json' in resp.headers.get('Content-Type', ''):
+                data = resp.json()
+                stocks = []
+                
+                # 解析返回的股票列表
+                items = data.get('items', []) or data.get('stocks', []) or data.get('list', [])
+                
+                print(f"[XueqiuService] 获取到 {len(items)} 条记录")
+                
+                for item in items:
+                    stock_code = item.get('code', '') or item.get('stock_code', '') or item.get('symbol', '')
+                    stock_name = item.get('name', '') or item.get('stock_name', '') or item.get('screen_name', '')
+                    market = item.get('market', '') or item.get('exchange', '')
+                    
+                    # 判断是否是沪深股票
+                    is_cn = False
+                    if stock_code:
+                        # 根据代码前缀判断
+                        code_num = stock_code.replace('SH', '').replace('SZ', '').replace('HK', '')
+                        if stock_code.startswith('SH') or stock_code.startswith('SZ'):
+                            is_cn = True
+                            market = market or stock_code[:2]
+                        elif stock_code.startswith('0') or stock_code.startswith('3') or stock_code.startswith('6'):
+                            is_cn = True
+                            # 判断具体市场
+                            if stock_code.startswith('6'):
+                                market = 'SH'
+                            else:
+                                market = 'SZ'
+                        elif stock_code.startswith('HK'):
+                            market = 'HK'
+                            is_cn = False
+                    
+                    if stock_code and stock_name:
+                        stocks.append({
+                            'stock_code': stock_code,
+                            'stock_name': stock_name,
+                            'market': market,
+                            'is_cn': is_cn,
+                        })
+                
+                return stocks
+            
+            return []
+            
+        except Exception as e:
+            print(f"[XueqiuService] 获取用户自选股失败: {e}")
             return []
     
     def crawl_vip(self, user_id: str) -> Dict[str, Any]:

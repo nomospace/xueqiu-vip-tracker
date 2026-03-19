@@ -97,3 +97,31 @@ class StatusAnalysis(Base):
     raw_content = Column(Text)  # 原始内容
     status_created_at = Column(DateTime)  # 大V发言时间（原始时间）
     created_at = Column(DateTime, server_default=func.now())  # 记录创建时间
+
+
+class VIPWatchlist(Base):
+    """大V自选股快照表"""
+    __tablename__ = "vip_watchlist"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vip_id = Column(Integer, ForeignKey("vip_users.id"), nullable=False, index=True)
+    stock_code = Column(String(20), nullable=False, index=True)  # 股票代码 (如 SH600519)
+    stock_name = Column(String(50), nullable=False)  # 股票名称
+    market = Column(String(10))  # 市场: SH/SZ/HK/US
+    is_cn = Column(Integer, default=1)  # 是否沪深股票 (1=是, 0=否)
+    snapshot_date = Column(String(10), nullable=False, index=True)  # 快照日期 YYYY-MM-DD
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class WatchlistChange(Base):
+    """自选股变更记录表"""
+    __tablename__ = "watchlist_changes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    vip_id = Column(Integer, ForeignKey("vip_users.id"), nullable=False, index=True)
+    stock_code = Column(String(20), nullable=False, index=True)
+    stock_name = Column(String(50))
+    market = Column(String(10))
+    change_type = Column(String(20), nullable=False)  # add/remove
+    detected_date = Column(String(10), nullable=False, index=True)  # 发现日期 YYYY-MM-DD
+    detected_at = Column(DateTime, server_default=func.now())
