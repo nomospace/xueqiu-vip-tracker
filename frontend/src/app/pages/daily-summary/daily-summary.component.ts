@@ -61,10 +61,12 @@ interface GlobalInsight {
       <header class="sticky top-0 z-50 bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg">
         <div class="max-w-7xl mx-auto px-4 py-3">
           <div class="flex items-center justify-between">
-            <!-- 品牌 -->
+            <!-- 品牌 Logo -->
             <div class="flex items-center gap-2">
-              <a routerLink="/" class="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center text-lg">📊</a>
-              <span class="font-bold text-lg">脱水雪球</span>
+              <a routerLink="/" class="flex items-center gap-2">
+                <img src="assets/favicon.svg" alt="脱水雪球" class="w-8 h-8 rounded-lg">
+                <span class="font-bold text-lg">脱水雪球</span>
+              </a>
             </div>
             
             <!-- 日期选择 + 刷新 -->

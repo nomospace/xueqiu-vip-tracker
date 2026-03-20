@@ -74,22 +74,35 @@ interface HoldingChange {
       <header class="sticky top-0 z-50 bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg">
         <div class="max-w-7xl mx-auto px-4 py-3">
           <div class="flex items-center justify-between">
-            <!-- 品牌 -->
+            <!-- 品牌 Logo -->
             <div class="flex items-center gap-2">
-              <div class="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center text-lg">📊</div>
+              <img src="assets/favicon.svg" alt="脱水雪球" class="w-8 h-8 rounded-lg">
               <div>
                 <h1 class="text-lg font-bold">脱水雪球</h1>
               </div>
             </div>
             
-            <!-- 刷新按钮 -->
-            <button 
-              (click)="refreshTimeline()"
-              [disabled]="loading"
-              class="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg text-sm transition disabled:opacity-50">
-              <span [class.animate-spin]="loading">🔄</span>
-              <span class="hidden sm:inline">{{ loading ? '刷新中' : '刷新' }}</span>
-            </button>
+            <!-- 日期选择 + 刷新 -->
+            <div class="flex items-center gap-2">
+              <input 
+                type="date" 
+                [ngModel]="selectedDate"
+                (ngModelChange)="onDateChange($event)"
+                class="bg-white/10 border border-white/20 text-white rounded-lg px-2 py-1 text-sm focus:outline-none w-32"
+                [style.color]="'white'">
+              <button 
+                (click)="clearDateFilter()"
+                class="flex items-center justify-center w-8 h-8 bg-white/10 hover:bg-white/20 rounded-lg text-sm transition"
+                title="清除日期筛选">
+                ✕
+              </button>
+              <button 
+                (click)="refreshTimeline()"
+                [disabled]="loading"
+                class="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 px-2 py-1.5 rounded-lg text-sm transition disabled:opacity-50">
+                <span [class.animate-spin]="loading">🔄</span>
+              </button>
+            </div>
           </div>
           
           <!-- 顶部导航 Tab（移动端隐藏，由底部 Tab 替代） -->
@@ -115,6 +128,20 @@ interface HoldingChange {
       </header>
 
       <main class="max-w-7xl mx-auto px-4 py-4 space-y-4">
+        <!-- 日期筛选提示 -->
+        @if (selectedDate) {
+          <div class="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 flex items-center justify-between">
+            <span class="text-sm text-blue-700">
+              📅 正在查看 {{ selectedDate }} 的时间线
+            </span>
+            <button 
+              (click)="clearDateFilter()"
+              class="text-sm text-blue-600 hover:text-blue-800">
+              查看全部
+            </button>
+          </div>
+        }
+        
         <!-- ========== 时间线内容 ========== -->
         <section class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           <!-- 内容区域 -->
@@ -131,7 +158,7 @@ interface HoldingChange {
                 <p class="text-xs text-slate-300 mt-2">请先添加关注的大V</p>
               </div>
             } @else {
-              @for (item of timeline; track item.id) {
+              @for (item of filteredTimeline; track item.id) {
                 <div class="p-4 hover:bg-slate-50 transition">
                   <!-- 头部：大V信息 + 时间 -->
                   <div class="flex items-center justify-between mb-2">
@@ -297,13 +324,14 @@ export class DashboardComponent implements OnInit {
   // 筛选状态
   selectedVipId: string | number = 'all';
   timeRange = '7d';
+  selectedDate: string = '';  // 日期筛选
   
   // 数据
   timeline: Status[] = [];
   loading = false;
   lastUpdate = '--';
   cacheTime = '';
-  buildTime = '2026-03-19 13:23';
+  buildTime = '2026-03-20 14:05';
   
   // Cookie
   cookieStatus = false;
@@ -313,6 +341,19 @@ export class DashboardComponent implements OnInit {
   // Toast
   toastMessage = '';
   toastType = 'success';
+
+  // 按日期过滤后的时间线
+  get filteredTimeline(): Status[] {
+    if (!this.selectedDate) {
+      return this.timeline;
+    }
+    
+    return this.timeline.filter(item => {
+      if (!item.created_at) return false;
+      const itemDate = new Date(item.created_at).toISOString().split('T')[0];
+      return itemDate === this.selectedDate;
+    });
+  }
 
   constructor(private http: HttpClient) {}
 
@@ -390,6 +431,18 @@ export class DashboardComponent implements OnInit {
 
   refreshTimeline() {
     this.loadTimeline(true);
+  }
+
+  onDateChange(date: string) {
+    this.selectedDate = date;
+    // 如果选择的日期没有数据，尝试重新加载
+    if (this.timeline.length === 0 && date) {
+      this.loadTimeline();
+    }
+  }
+
+  clearDateFilter() {
+    this.selectedDate = '';
   }
 
   onFilterChange() {
