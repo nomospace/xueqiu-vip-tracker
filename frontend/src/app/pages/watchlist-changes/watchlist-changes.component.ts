@@ -36,60 +36,26 @@ interface SyncResult {
       <header class="sticky top-0 z-50 bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg">
         <div class="max-w-7xl mx-auto px-4 py-3">
           <div class="flex items-center justify-between">
-            <!-- 品牌 -->
+            <!-- 品牌 Logo -->
             <div class="flex items-center gap-2">
-              <a routerLink="/" class="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center text-lg">📊</a>
-              <span class="font-bold text-lg">脱水雪球</span>
+              <a routerLink="/" class="flex items-center gap-2">
+                <img src="assets/favicon.svg" alt="脱水雪球" class="w-8 h-8 rounded-lg">
+                <span class="font-bold text-lg">脱水雪球</span>
+              </a>
             </div>
             
-            <!-- 同步按钮 -->
+            <!-- 同步按钮（只显示图标） -->
             <button 
               (click)="showSyncModal = true"
-              class="flex items-center gap-1.5 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg text-sm transition">
-              <span>🔄</span>
-              <span>同步自选</span>
+              class="flex items-center justify-center w-10 h-10 bg-white/10 hover:bg-white/20 rounded-lg text-sm transition"
+              title="同步自选">
+              🔄
             </button>
           </div>
-          
-          <!-- 顶部导航 Tab（移动端隐藏，由底部 Tab 替代） -->
-          <nav class="hidden sm:flex gap-1 mt-3 -mb-2 overflow-x-auto">
-            <a routerLink="/" 
-               class="flex-shrink-0 px-4 py-2 text-sm font-medium hover:bg-white/10 rounded-t-lg transition">
-              📅 时间线
-            </a>
-            <a routerLink="/summary" 
-               class="flex-shrink-0 px-4 py-2 text-sm font-medium hover:bg-white/10 rounded-t-lg transition">
-              📊 今日摘要
-            </a>
-            <a routerLink="/watchlist" 
-               class="flex-shrink-0 px-4 py-2 text-sm font-medium rounded-t-lg transition bg-white/20">
-              ⭐ 自选变更
-            </a>
-            <a routerLink="/vip" 
-               class="flex-shrink-0 px-4 py-2 text-sm font-medium hover:bg-white/10 rounded-t-lg transition">
-              👥 大V管理
-            </a>
-          </nav>
         </div>
       </header>
 
       <main class="max-w-7xl mx-auto px-4 py-4 space-y-4">
-        <!-- ========== 统计卡片 ========== -->
-        <section class="grid grid-cols-3 gap-3">
-          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 text-center">
-            <div class="text-2xl font-bold text-green-600">{{ addedCount }}</div>
-            <div class="text-xs text-slate-500 mt-1">新增关注</div>
-          </div>
-          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 text-center">
-            <div class="text-2xl font-bold text-red-600">{{ removedCount }}</div>
-            <div class="text-xs text-slate-500 mt-1">取消关注</div>
-          </div>
-          <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4 text-center">
-            <div class="text-2xl font-bold text-blue-600">{{ vipCount }}</div>
-            <div class="text-xs text-slate-500 mt-1">变更大V</div>
-          </div>
-        </section>
-
         <!-- ========== 筛选栏 ========== -->
         <section class="bg-white rounded-xl shadow-sm border border-slate-200 p-3">
           <div class="flex items-center justify-between">
@@ -176,8 +142,8 @@ interface SyncResult {
         </div>
       </main>
 
-      <!-- ========== 底部 Tab 栏（移动端） ========== -->
-      <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-50 sm:hidden">
+      <!-- ========== 底部 Tab 栏（始终显示） ========== -->
+      <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-50">
         <div class="flex justify-around py-2">
           <a routerLink="/" class="flex flex-col items-center py-1 px-3 text-slate-500">
             <span class="text-xl">📅</span>

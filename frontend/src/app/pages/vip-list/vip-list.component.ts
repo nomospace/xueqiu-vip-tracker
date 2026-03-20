@@ -40,26 +40,6 @@ interface VIPUser {
               <span>添加</span>
             </button>
           </div>
-          
-          <!-- 顶部导航 Tab（移动端隐藏，由底部 Tab 替代） -->
-          <nav class="hidden sm:flex gap-1 mt-3 -mb-2 overflow-x-auto">
-            <a routerLink="/" 
-               class="flex-shrink-0 px-4 py-2 text-sm font-medium hover:bg-white/10 rounded-t-lg transition">
-              📅 时间线
-            </a>
-            <a routerLink="/summary" 
-               class="flex-shrink-0 px-4 py-2 text-sm font-medium hover:bg-white/10 rounded-t-lg transition">
-              📊 今日摘要
-            </a>
-            <a routerLink="/watchlist" 
-               class="flex-shrink-0 px-4 py-2 text-sm font-medium hover:bg-white/10 rounded-t-lg transition">
-              ⭐ 自选变更
-            </a>
-            <a routerLink="/vip" 
-               class="flex-shrink-0 px-4 py-2 text-sm font-medium rounded-t-lg transition bg-white/20">
-              👥 大V管理
-            </a>
-          </nav>
         </div>
       </header>
 
@@ -157,8 +137,8 @@ interface VIPUser {
         }
       </main>
 
-      <!-- ========== 底部 Tab 栏（移动端） ========== -->
-      <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-50 sm:hidden">
+      <!-- ========== 底部 Tab 栏（始终显示） ========== -->
+      <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-50">
         <div class="flex justify-around py-2">
           <a routerLink="/" class="flex flex-col items-center py-1 px-3 text-slate-500">
             <span class="text-xl">📅</span>
