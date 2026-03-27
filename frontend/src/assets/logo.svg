@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 32" height="32">
+  <defs>
+    <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#60a5fa"/>
+      <stop offset="100%" style="stop-color:#2563eb"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Logo 图标部分 -->
+  <rect x="1" y="2" width="28" height="28" rx="6" fill="url(#logoGrad)"/>
+  
+  <!-- 小雪球 -->
+  <circle cx="12" cy="12" r="6" fill="white" opacity="0.95"/>
+  <circle cx="10" cy="10" r="2" fill="#e0e7ff" opacity="0.6"/>
+  
+  <!-- 水滴 -->
+  <path d="M21 6 Q26 13 21 20 Q16 13 21 6" fill="white" opacity="0.9"/>
+  
+  <!-- 趋势线 -->
+  <path d="M6 24 L12 20 L18 22 L26 16" stroke="white" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.8"/>
+  
+  <!-- 文字部分 -->
+  <text x="36" y="22" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="700" fill="#1e40af">脱水雪球</text>
+</svg>

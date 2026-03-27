@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- 渐变背景 -->
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6"/>
+      <stop offset="100%" style="stop-color:#1d4ed8"/>
+    </linearGradient>
+    <linearGradient id="dropGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#60a5fa"/>
+      <stop offset="100%" style="stop-color:#2563eb"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- 圆角矩形背景 -->
+  <rect x="5" y="5" width="90" height="90" rx="20" fill="url(#bgGrad)"/>
+  
+  <!-- 雪球（白色圆形带阴影效果） -->
+  <circle cx="42" cy="42" r="22" fill="white" opacity="0.95"/>
+  <circle cx="38" cy="38" r="8" fill="#e0e7ff" opacity="0.6"/>
+  
+  <!-- 水滴（代表脱水/精华提取） -->
+  <path d="M68 28 Q78 42 68 58 Q58 42 68 28" fill="url(#dropGrad)"/>
+  <ellipse cx="65" cy="38" rx="3" ry="4" fill="white" opacity="0.5"/>
+  
+  <!-- 趋势线（代表数据分析） -->
+  <path d="M25 70 L38 62 L52 68 L75 52" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.9"/>
+  
+  <!-- 数据点 -->
+  <circle cx="25" cy="70" r="3" fill="white"/>
+  <circle cx="52" cy="68" r="3" fill="white"/>
+  <circle cx="75" cy="52" r="4" fill="white"/>
+</svg>
